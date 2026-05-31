@@ -1,0 +1,19 @@
+#!/bin/sh
+# SPDX-License-Identifier: AGPL-3.0-or-later
+set -e
+
+LIBEXEC=/usr/libexec/libfprint-2-tod1-broadcom-installer
+
+# On removal (but not on upgrade) take the driver back out and restore whatever
+# the installer backed up. uninstall.sh leaves enrolled fingerprints untouched.
+case "$1" in
+    remove)
+        if [ -x "$LIBEXEC/uninstall.sh" ]; then
+            "$LIBEXEC/uninstall.sh" || true
+        fi
+        ;;
+esac
+
+#DEBHELPER#
+
+exit 0

@@ -1,0 +1,8 @@
+libfprint-2-tod1-broadcom-installer (0.1.0~24.04.1) noble; urgency=medium
+
+  * Initial release. Fetches the Broadcom BCM58200 ControlVault 3 fingerprint
+    TOD driver from Canonical's archive, verifies it against a pinned SHA256,
+    and installs it on Ubuntu releases newer than 22.04. The proprietary driver
+    is never redistributed by this package. (LP: #2099655)
+
+ -- Daniel Iwugo <daniel@themalwarefiles.com>  Sun, 31 May 2026 20:57:23 +0100

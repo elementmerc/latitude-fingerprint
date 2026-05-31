@@ -1,0 +1,30 @@
+Source: libfprint-2-tod1-broadcom-installer
+Section: admin
+Maintainer: Daniel Iwugo <daniel@themalwarefiles.com>
+Build-Depends: debhelper-compat (= 13)
+Standards-Version: 4.7.3
+Homepage: https://github.com/elementmerc/latitude-fingerprint
+
+Package: libfprint-2-tod1-broadcom-installer
+Architecture: amd64
+Depends: ${misc:Depends},
+ libfprint-2-tod1 (>= 1:1.90.5+tod1),
+ fprintd,
+ libpam-fprintd,
+ python3,
+ python3-gi,
+ libusb-1.0-0,
+ ca-certificates,
+ udev,
+ curl | wget
+Description: fetch and install the Broadcom CV3 fingerprint driver
+ Dell Latitude and Precision laptops with the Broadcom BCM58200 ControlVault 3
+ fingerprint sensor (USB 0a5c:5843) need a closed-source libfprint TOD driver
+ that Canonical ships only for Ubuntu 22.04. This package makes that driver
+ installable on newer Ubuntu releases.
+ .
+ The proprietary driver is not included here and is never redistributed by this
+ package. On install it is downloaded from Canonical's archive, checked against
+ a pinned SHA256 hash, and laid into the system. If the download fails the
+ install fails loudly and changes nothing. See the homepage for the licensing
+ rationale.

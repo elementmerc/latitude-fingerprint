@@ -1,0 +1,13 @@
+#!/usr/bin/make -f
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+PKGDIR := debian/libfprint-2-tod1-broadcom-installer
+LIBEXEC := $(PKGDIR)/usr/libexec/libfprint-2-tod1-broadcom-installer
+
+%:
+	dh $@
+
+# dh_fixperms makes everything under /usr/libexec executable. That is right for
+# the two scripts but wrong for the data files beside them, so reset those.
+execute_after_dh_fixperms:
+	chmod 0644 $(LIBEXEC)/SHA256SUMS $(LIBEXEC)/SOURCES
