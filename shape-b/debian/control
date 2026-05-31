@@ -17,6 +17,7 @@ Depends: ${misc:Depends},
  ca-certificates,
  udev,
  curl | wget
+Conflicts: libfprint-2-tod1-broadcom
 Description: fetch and install the Broadcom CV3 fingerprint driver
  Dell Latitude and Precision laptops with the Broadcom BCM58200 ControlVault 3
  fingerprint sensor (USB 0a5c:5843) need a closed-source libfprint TOD driver
