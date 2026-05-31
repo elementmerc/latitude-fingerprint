@@ -4,8 +4,10 @@ Fingerprint login for Dell Latitude and Precision laptops on Ubuntu 24.04 and
 26.04 LTS.
 
 Dell's Broadcom fingerprint sensor (ControlVault 3, USB `0a5c:5843`) has a
-working Linux driver, but Canonical only ships it for Ubuntu 22.04. This puts it
-on the current LTS releases.
+working Linux driver, but Canonical packages it only for the 22.04 OEM channel.
+There is no copy in the normal Ubuntu archive for any release, so on a current
+LTS you cannot simply `apt install` it. This project makes it a one command
+install on 24.04 and 26.04.
 
 ## Install
 
@@ -41,6 +43,18 @@ sudo ./uninstall.sh
 ```
 
 Your enrolled fingerprints are kept.
+
+## Background
+
+Canonical has an in progress effort to package this driver, tracked in
+[Launchpad bug #2099655](https://bugs.launchpad.net/ubuntu/+bug/2099655), with
+builds in a personal PPA (`ppa:medicalwei/dell-cv3-cv3plus`) covering 22.04,
+24.04, 25.04, and 25.10. That work has been quiet since early 2025 and has not
+reached the Ubuntu archive, and it does not cover 26.04. This project is an
+independent, maintained alternative: tested on real hardware, covering both
+current LTS releases, and built so it never redistributes the proprietary
+driver. If those packages reach the Ubuntu archive, that becomes the natural
+home; until then, this covers current LTS users.
 
 ## Licence
 
