@@ -1,0 +1,18 @@
+# The proprietary Broadcom driver is fetched on install, never committed
+# (see docs/LICENSING.md).
+*.deb
+
+# Secrets
+.env
+.env.*
+*.pem
+*.key
+.credentials.json
+
+# Editor and OS clutter
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/
