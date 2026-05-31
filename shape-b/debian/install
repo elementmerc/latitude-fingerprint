@@ -1,0 +1,4 @@
+install.sh usr/libexec/libfprint-2-tod1-broadcom-installer
+uninstall.sh usr/libexec/libfprint-2-tod1-broadcom-installer
+SHA256SUMS usr/libexec/libfprint-2-tod1-broadcom-installer
+SOURCES usr/libexec/libfprint-2-tod1-broadcom-installer

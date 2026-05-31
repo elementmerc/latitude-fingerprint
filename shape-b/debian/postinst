@@ -1,0 +1,29 @@
+#!/bin/sh
+# SPDX-License-Identifier: AGPL-3.0-or-later
+set -e
+
+LIBEXEC=/usr/libexec/libfprint-2-tod1-broadcom-installer
+
+case "$1" in
+    configure)
+        if [ -x "$LIBEXEC/install.sh" ]; then
+            echo "Fetching and installing the Broadcom fingerprint driver from Canonical..."
+            if ! "$LIBEXEC/install.sh"; then
+                echo "" >&2
+                echo "The fingerprint driver could not be installed. The most likely cause" >&2
+                echo "is that the driver could not be downloaded from Canonical's archive." >&2
+                echo "Once the network is reachable, retry with:" >&2
+                echo "  sudo apt install --reinstall libfprint-2-tod1-broadcom-installer" >&2
+                echo "or run the installer directly:" >&2
+                echo "  sudo $LIBEXEC/install.sh" >&2
+                exit 1
+            fi
+        fi
+        ;;
+    abort-upgrade|abort-remove|abort-deconfigure)
+        ;;
+esac
+
+#DEBHELPER#
+
+exit 0
