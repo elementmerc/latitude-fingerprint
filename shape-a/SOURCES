@@ -1,0 +1,39 @@
+# Source of the proprietary Broadcom TOD fingerprint driver
+#
+# This project never redistributes the blob (see docs/LICENSING.md). install.sh
+# fetches it from Canonical's archive and verifies it against SHA256SUMS before
+# laying it into the system. This file records the pinned source so the install
+# is reproducible and auditable.
+
+Package:   libfprint-2-tod1-broadcom
+Version:   5.15.285-5.15.010.0-0ubuntu2~22.04.1~oem1
+Filename:  libfprint-2-tod1-broadcom_5.15.285-5.15.010.0-0ubuntu2~22.04.1~oem1_amd64.deb
+Size:      6239142 bytes
+SHA256:    98fa8afab8b97457329a74960f6a6404f32a1782bcdcaed96030ffa15badb962
+Modified:  2025-08-15 (newest in the pool as of 2026-05-30)
+
+# Canonical pool directory:
+#   http://dell.archive.canonical.com/updates/pool/public/libf/libfprint-2-tod1-broadcom/
+#
+# Primary URLs install.sh tries, in order (https first, http fallback). Note:
+# https to this host currently times out; plain http returns 200. Integrity is
+# guaranteed by the pinned SHA256 above, not by the transport.
+#
+#   https://dell.archive.canonical.com/updates/pool/public/libf/libfprint-2-tod1-broadcom/libfprint-2-tod1-broadcom_5.15.285-5.15.010.0-0ubuntu2~22.04.1~oem1_amd64.deb
+#   http://dell.archive.canonical.com/updates/pool/public/libf/libfprint-2-tod1-broadcom/libfprint-2-tod1-broadcom_5.15.285-5.15.010.0-0ubuntu2~22.04.1~oem1_amd64.deb
+
+# Fallback mirrors (TD-4): if Canonical's pool path moves or the file is pulled,
+# the deb has also been distributed via the community channels below. Always
+# verify against the SHA256 above before installing, whatever the source.
+#   - (none vetted yet; populate when a stable mirror is confirmed)
+#
+# Manual install when the network is awkward:
+#   1. Download the file above on any machine.
+#   2. Confirm:  sha256sum -c SHA256SUMS   (run from this directory)
+#   3. Install:  sudo ./install.sh --deb /path/to/the.deb
+
+# Robustness upgrade (deferred): the authoritative SHA256 for this deb is also
+# carried in Canonical's GPG-signed Packages index for the OEM pocket. A future
+# install.sh could verify the signed index and read the hash from there, rather
+# than trusting the hash committed in SHA256SUMS. For now the committed hash is
+# the trust anchor, reviewed in git, matching the AUR/Fedora/Gentoo precedent.
