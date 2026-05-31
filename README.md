@@ -49,12 +49,12 @@ Your enrolled fingerprints are kept.
 Canonical has an in progress effort to package this driver, tracked in
 [Launchpad bug #2099655](https://bugs.launchpad.net/ubuntu/+bug/2099655), with
 builds in a personal PPA (`ppa:medicalwei/dell-cv3-cv3plus`) covering 22.04,
-24.04, 25.04, and 25.10. That work has been quiet since early 2025 and has not
-reached the Ubuntu archive, and it does not cover 26.04. This project is an
-independent, maintained alternative: tested on real hardware, covering both
-current LTS releases, and built so it never redistributes the proprietary
-driver. If those packages reach the Ubuntu archive, that becomes the natural
-home; until then, this covers current LTS users.
+24.04, 25.04, and 25.10. That PPA is maintained but has not reached the Ubuntu
+archive for any release, and it has no ControlVault 3 build for 26.04. This
+project is an independent alternative: tested on real hardware, covering both
+current LTS releases including 26.04, and built so it never redistributes the
+proprietary driver. If those packages reach the Ubuntu archive, that becomes the
+natural home; until then, this covers current LTS users, 26.04 in particular.
 
 ## Licence
 
