@@ -4,6 +4,25 @@ All notable changes to latitude-fingerprint are recorded here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the
 project uses date-stamped, codenamed releases.
 
+## v0.2.0 — Ghost of Yotei (2026-05-31)
+
+Adds an `apt install` route for the two current LTS releases.
+
+### Packaging
+- New apt install path for Ubuntu 24.04 (noble) and 26.04 (resolute) LTS, via
+  the PPA `ppa:elementmerc/latitude-fingerprint` and this GitHub Releases
+  mirror. The package downloads the driver from Canonical, verifies a pinned
+  SHA256, and installs it; it never bundles the proprietary driver. It also
+  refuses to co-install with the genuine Broadcom package so the two cannot
+  clash over the same files.
+
+### Docs
+- The README now credits the official, in-progress packaging effort (Launchpad
+  #2099655) and explains how this project relates to it.
+
+### Other
+- Bug fixes and improvements.
+
 ## v0.1.0 — Problem Solved (2026-05-30)
 
 First release: the personal install script.
