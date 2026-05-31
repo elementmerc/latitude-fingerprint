@@ -1,0 +1,13 @@
+# Baseline hook allowlist — one grep -E pattern per line; blank lines and
+# lines starting with # are ignored. A staged line matching any pattern is
+# exempted from the gate that consulted it.
+#
+# These four entries cover CLAUDE.md §14, which teaches British English by
+# showing the US spellings as "X not Y" counter-examples. The BRE gate
+# correctly spots the US words; here they are deliberate teaching text, so
+# they are exempted. The patterns are anchored to the "*british* not us"
+# contrast so they cannot mask a real US spelling elsewhere.
+\*analyse\* not analyze, \*colour\* not color
+\*behaviour\* not behavior, \*recognise\* not recognize
+not organization, \*licence\* \(noun\) and \*license\* \(verb\)
+dictates \(e\.g\. CSS `color`, `Cargo\.toml` `license` field

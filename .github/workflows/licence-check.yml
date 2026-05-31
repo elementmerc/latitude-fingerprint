@@ -1,0 +1,39 @@
+name: Licence Header Check
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+
+permissions:
+  contents: read
+
+jobs:
+  licence-check:
+    name: Licence Header Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      # Every source file (Rust + TypeScript + JS + shell + build scripts)
+      # must carry the SPDX-License-Identifier header. Markdown / TOML /
+      # YAML / JSON live under the repo-level LICENSE.
+      - name: Verify SPDX headers on source files
+        run: |
+          set -e
+          MISSING=()
+          while IFS= read -r f; do
+            # Skip vendored / generated / target dirs.
+            case "$f" in
+              */node_modules/*|*/target/*|*/dist/*|*/.git/*|*/private/*|*/vendor/*) continue ;;
+            esac
+            head -10 "$f" | grep -q 'SPDX-License-Identifier' || MISSING+=("$f")
+          done < <(git ls-files '*.rs' '*.ts' '*.tsx' '*.js' '*.jsx' '*.sh' 'build.rs' 2>/dev/null)
+          if [[ ${#MISSING[@]} -gt 0 ]]; then
+            echo "::error::Missing SPDX-License-Identifier on these files:"
+            printf '  %s\n' "${MISSING[@]}"
+            exit 1
+          fi
+          echo "All source files carry an SPDX header. ✓"

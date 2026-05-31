@@ -1,0 +1,36 @@
+{
+  "_comment": "Starter Claude Code settings for a project. Copy to the project's .claude/settings.json and adjust. This is a TEMPLATE: it carries no secrets, no machine-specific paths, and no accumulated personal permission grants. Keep it that way — secrets belong in the environment or an encrypted store, never in a committed settings file.",
+
+  "_comment_permissions": "deny always wins over allow. 'ask' prompts. Start strict and widen deliberately as the project needs it, rather than starting wide.",
+  "permissions": {
+    "allow": [
+      "Read(**)",
+      "Bash(git status)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git branch:*)",
+      "Bash(ls:*)",
+      "Bash(cat:*)"
+    ],
+    "ask": [
+      "Bash(git push:*)",
+      "Bash(git commit:*)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(./**/*.pem)",
+      "Read(./**/*.key)",
+      "Read(./**/id_rsa*)",
+      "Read(./**/id_ed25519*)",
+      "Read(./**/credentials*)",
+      "Read(./**/.npmrc)"
+    ]
+  },
+
+  "_comment_hooks": "Editor-side hooks are separate from the git hooks in claude-baseline/hooks/. Wire git hooks with hooks/install.sh. Add Claude Code hooks here only when a project needs them.",
+  "hooks": {},
+
+  "_comment_env": "Never put secret values here. This file is committed. Reference environment variables that are set outside the repo.",
+  "env": {}
+}

@@ -1,0 +1,39 @@
+# Minimal universal .gitignore shipped by claude-setup. Language-specific
+# additions (Rust target/, Node node_modules/, Python __pycache__/, etc.)
+# are project work; add when you know what languages this repo ships.
+
+# Operator-only state — never committed, lives via Syncthing instead
+private/
+catastrophic/
+
+# Environment + secrets
+.env
+.env.*
+*.pem
+*.key
+.credentials.json
+
+# The proprietary Broadcom blob is fetched on install, never committed
+# (see docs/LICENSING.md). Ignore any downloaded deb and local staging.
+*.deb
+shape-a/.cache/
+
+# Editor + OS leakage
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# Common build artefact directories — uncomment per project as needed
+# target/
+# node_modules/
+# dist/
+# build/
+# __pycache__/
+# *.pyc
+
+# Claude Code local state (settings.local.json is per-machine; settings.json
+# is shared and committed)
+.claude/settings.local.json

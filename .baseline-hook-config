@@ -1,0 +1,28 @@
+# Project-level configuration for the baseline git hooks.
+# Copied here by install-project.sh; edit to fit the project.
+# Sourced as plain shell by .githooks/pre-commit and .githooks/pre-push.
+
+# 1. British-English gate — on by default.
+BRE_ENABLED=1
+
+# 2. Private-leak gate — directories whose contents must NOT be staged.
+#    Defaults match the common conventions; extend if the project uses
+#    additional sandbox dirs.
+PRIVATE_DIRS='private private-*'
+
+# 3. Future-version gate — opt-in. Set the regex to block references to
+#    versions beyond the one currently shipping in user-facing docs
+#    (README, AUP, COMMERCIAL, docs/**). The roadmap is gitignored so
+#    references there are unaffected.
+#    This project's docs are full of Ubuntu and libfprint version numbers
+#    (24.04, 26.04, 5.15, 1.90.1), so the cross-project default false-flags
+#    them all. We pin a v-prefixed pattern that catches only OUR own future
+#    release line (current is v0.1.0): v0.2+, v0.10+, and any v1+. Bare
+#    Ubuntu/library numbers have no leading "v" and are left alone.
+BLOCK_FUTURE_VERSIONS_REGEX='\bv0\.([2-9]|[1-9][0-9])|\bv[1-9][0-9]*'
+
+# 4. Version-consistency gate — override the auto-discovered list.
+#    Default is to discover Cargo.toml (with [package]) + package.json +
+#    tauri.conf.json{,5} under the repo root. Set VERSION_FILES to a
+#    bash array to override.
+# VERSION_FILES=(Cargo.toml frontend/package.json src-tauri/tauri.conf.json)
