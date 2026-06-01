@@ -6,30 +6,45 @@
 #
 # Canonical ships this driver as a libfprint TOD plugin but pins it to the
 # 22.04 OEM apt pocket, so `apt install` refuses it on 24.04/26.04. This
-# script fetches that proprietary deb from Canonical's archive, verifies it
-# against a pinned SHA256, and lays its four payload trees into the running
-# system the way the deb's own maintainer scripts would. The blob is never
-# redistributed by this project; you fetch it from Canonical (see
-# docs/LICENSING.md).
+# script fetches the proprietary driver, verifies it against a pinned SHA256,
+# and lays its payload trees into the running system the way the deb's own
+# maintainer scripts would. The blob is never redistributed by this project;
+# you fetch it yourself (see docs/LICENSING.md).
+#
+# Two sources, in order of preference:
+#   1. Canonical's OEM deb (primary): the curated, hardware-verified build.
+#   2. Broadcom's upstream tarball (fallback): the same version, a different
+#      build, used only when the OEM source is unreachable. See SOURCES.
 #
 # Safe to re-run. Backs up anything it overwrites; uninstall.sh restores.
 
 set -euo pipefail
 
-# ── Pinned source (see SHA256SUMS and SOURCES) ──────────────────────────────
+# ── Primary source: Canonical OEM deb (see SHA256SUMS and SOURCES) ──────────
 readonly DEB_NAME="libfprint-2-tod1-broadcom_5.15.285-5.15.010.0-0ubuntu2~22.04.1~oem1_amd64.deb"
 readonly DEB_POOL="updates/pool/public/libf/libfprint-2-tod1-broadcom"
 # https to the archive currently times out; http works. Integrity is enforced
 # by the pinned SHA256 in SHA256SUMS, not by the transport. Try https first in
 # case your network allows it, then fall back to http.
-readonly MIRRORS=(
+readonly DEB_MIRRORS=(
     "https://dell.archive.canonical.com/${DEB_POOL}/${DEB_NAME}"
     "http://dell.archive.canonical.com/${DEB_POOL}/${DEB_NAME}"
 )
 
-# ── Payload trees the deb installs (confirmed against 5.15.285) ─────────────
-# Each entry is a path relative to the extraction root; it is laid into / with
-# structure and modes preserved. Files and directories are both handled.
+# ── Fallback source: Broadcom upstream tarball (see SOURCES) ────────────────
+# Same driver version as the OEM deb but a different build, so it is the
+# fallback rather than the default. Used only when the OEM source cannot be
+# downloaded. It carries no firmware-settle helper; the driver settles its
+# firmware on first sensor access.
+readonly TGZ_NAME="brcm_linux_fp_5.15.285_5.15.010.0.tgz"
+readonly TGZ_MIRRORS=(
+    "https://packages.broadcom.com/artifactory/dell-controlvault-drivers/${TGZ_NAME}"
+)
+
+# ── Payload trees laid into / (install whichever the source provides) ───────
+# Paths relative to the extraction root; laid into / with structure and modes
+# preserved. The OEM deb provides all four; the upstream tarball provides the
+# first, second, and fourth (no firmware-settle helper).
 readonly TREES=(
     "usr/lib/x86_64-linux-gnu/libfprint-2/tod-1/libfprint-2-tod-1-broadcom.so"
     "usr/lib/udev/rules.d/60-libfprint-2-device-broadcom.rules"
@@ -67,32 +82,58 @@ trap cleanup EXIT INT TERM
 
 usage() {
     cat <<EOF
-Usage: sudo $0 [--deb PATH] [--force] [--keep-deb] [-h|--help]
+Usage: sudo $0 [--source auto|oem|upstream] [--deb PATH] [--tarball PATH]
+               [--force] [--keep-deb] [-h|--help]
 
-  --deb PATH   Install from an already-downloaded deb instead of fetching.
-  --force      Reinstall even if the matching driver is already in place.
-  --keep-deb   Keep the downloaded deb in ${SCRIPT_DIR}/.cache instead of /tmp.
-  -h, --help   Show this help.
+  --source MODE  Where to get the driver:
+                   auto      OEM deb, falling back to the Broadcom tarball
+                             if the OEM source is unreachable (default).
+                   oem       OEM deb only.
+                   upstream  Broadcom upstream tarball only.
+  --deb PATH     Install from an already-downloaded OEM deb (implies --source oem).
+  --tarball PATH Install from an already-downloaded Broadcom tarball
+                 (implies --source upstream).
+  --force        Reinstall even if the matching driver is already in place.
+  --keep-deb     Keep the download in ${SCRIPT_DIR}/.cache instead of /tmp.
+  -h, --help     Show this help.
 
-Fetches ${DEB_NAME} from Canonical, verifies it against SHA256SUMS, and
-installs the Broadcom TOD fingerprint driver. Re-runnable; see uninstall.sh.
+Fetches the Broadcom TOD fingerprint driver, verifies it against SHA256SUMS,
+and installs it. Re-runnable; see uninstall.sh.
 EOF
 }
 
 # ── Argument parsing ────────────────────────────────────────────────────────
+SOURCE="auto"
 DEB_PATH=""
+TGZ_PATH=""
 FORCE=0
 KEEP_DEB=0
+valid_source() { [[ "$1" == "auto" || "$1" == "oem" || "$1" == "upstream" ]]; }
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --deb)      DEB_PATH="${2:-}"; [[ -n "$DEB_PATH" ]] || die "--deb needs a path"; shift 2 ;;
-        --deb=*)    DEB_PATH="${1#*=}"; shift ;;
-        --force)    FORCE=1; shift ;;
-        --keep-deb) KEEP_DEB=1; shift ;;
-        -h|--help)  usage; exit 0 ;;
-        *)          die "unknown argument: $1 (try --help)" ;;
+        --source)    SOURCE="${2:-}"; valid_source "$SOURCE" || die "--source must be auto, oem, or upstream"; shift 2 ;;
+        --source=*)  SOURCE="${1#*=}"; valid_source "$SOURCE" || die "--source must be auto, oem, or upstream"; shift ;;
+        --deb)       DEB_PATH="${2:-}"; [[ -n "$DEB_PATH" ]] || die "--deb needs a path"; shift 2 ;;
+        --deb=*)     DEB_PATH="${1#*=}"; shift ;;
+        --tarball)   TGZ_PATH="${2:-}"; [[ -n "$TGZ_PATH" ]] || die "--tarball needs a path"; shift 2 ;;
+        --tarball=*) TGZ_PATH="${1#*=}"; shift ;;
+        --force)     FORCE=1; shift ;;
+        --keep-deb)  KEEP_DEB=1; shift ;;
+        -h|--help)   usage; exit 0 ;;
+        *)           die "unknown argument: $1 (try --help)" ;;
     esac
 done
+
+# A supplied local file pins the source.
+[[ -n "$DEB_PATH" && -n "$TGZ_PATH" ]] && die "pass only one of --deb or --tarball."
+if [[ -n "$DEB_PATH" ]]; then
+    [[ "$SOURCE" == "auto" || "$SOURCE" == "oem" ]] || die "--deb conflicts with --source $SOURCE"
+    SOURCE="oem"
+fi
+if [[ -n "$TGZ_PATH" ]]; then
+    [[ "$SOURCE" == "auto" || "$SOURCE" == "upstream" ]] || die "--tarball conflicts with --source $SOURCE"
+    SOURCE="upstream"
+fi
 
 # ── Step 1: preflight ───────────────────────────────────────────────────────
 preflight() {
@@ -112,12 +153,12 @@ preflight() {
     fi
 
     local tool
-    for tool in dpkg-deb udevadm systemctl python3 sha256sum install; do
+    for tool in dpkg-deb tar udevadm systemctl python3 sha256sum install; do
         command -v "$tool" >/dev/null 2>&1 || die "required tool not found: $tool"
     done
-    if [[ -z "$DEB_PATH" ]]; then
+    if [[ -z "$DEB_PATH" && -z "$TGZ_PATH" ]]; then
         command -v curl >/dev/null 2>&1 || command -v wget >/dev/null 2>&1 \
-            || die "need curl or wget to fetch the deb (or pass --deb PATH)."
+            || die "need curl or wget to fetch the driver (or pass --deb/--tarball PATH)."
     fi
 
     python3 -c 'import gi' 2>/dev/null \
@@ -136,49 +177,113 @@ preflight() {
     ok "Pre-flight passed."
 }
 
-# ── Step 2: obtain the deb ──────────────────────────────────────────────────
-fetch_deb() {
-    if [[ -n "$DEB_PATH" ]]; then
-        [[ -r "$DEB_PATH" ]] || die "deb not readable: $DEB_PATH"
-        log "Using supplied deb: $DEB_PATH"
-        return
-    fi
-    local dest_dir
-    if [[ $KEEP_DEB -eq 1 ]]; then
-        dest_dir="${SCRIPT_DIR}/.cache"; mkdir -p -- "$dest_dir"
-    else
-        dest_dir="$STAGE"
-    fi
-    DEB_PATH="${dest_dir}/${DEB_NAME}"
-
-    if [[ -r "$DEB_PATH" ]] && verify_sum "$DEB_PATH" 2>/dev/null; then
-        ok "Reusing already-downloaded, verified deb: $DEB_PATH"
-        return
-    fi
-
+# ── Download helper: try each URL in turn; return 1 if none succeed ──────────
+download() {
+    local dest="$1"; shift
     local url
-    for url in "${MIRRORS[@]}"; do
-        log "Fetching ${url%%://*} ..."
+    for url in "$@"; do
+        log "Fetching ${url%%://*} from ${url#*://}" >&2
         if command -v curl >/dev/null 2>&1; then
-            curl -fSL --connect-timeout 15 --max-time 300 -o "$DEB_PATH" "$url" && return
+            curl -fSL --connect-timeout 15 --max-time 300 -o "$dest" "$url" && return 0
         else
-            wget -q --timeout=300 -O "$DEB_PATH" "$url" && return
+            wget -q --timeout=300 -O "$dest" "$url" && return 0
         fi
-        warn "fetch failed from ${url%%://*}; trying next mirror."
+        warn "fetch failed from ${url%%://*}; trying next."
     done
-    die "could not download $DEB_NAME from any mirror. See SOURCES for manual options."
+    return 1
 }
 
-# ── Step 3: verify against the pinned checksum ──────────────────────────────
-verify_sum() {
-    local f="$1" expected actual
-    expected="$(awk -v n="$DEB_NAME" '$2==n || $2=="*"n {print $1}' "$SUMS_FILE")"
-    [[ -n "$expected" ]] || die "no pinned checksum for $DEB_NAME in $SUMS_FILE"
+# ── Verify a downloaded artefact against its pinned checksum ─────────────────
+verify_file() {
+    local f="$1" name="$2" expected actual
+    expected="$(awk -v n="$name" '$2==n || $2=="*"n {print $1}' "$SUMS_FILE")"
+    [[ -n "$expected" ]] || die "no pinned checksum for $name in $SUMS_FILE"
     actual="$(sha256sum -- "$f" | awk '{print $1}')"
     [[ "$actual" == "$expected" ]]
 }
 
-# ── Step 4: idempotency short-circuit ───────────────────────────────────────
+download_dir() {
+    if [[ $KEEP_DEB -eq 1 ]]; then printf '%s' "${SCRIPT_DIR}/.cache"; else printf '%s' "$STAGE"; fi
+}
+
+# ── Obtain from the OEM deb. Returns 1 only if it cannot be downloaded; a ────
+#    checksum mismatch is fatal (a tamper/corruption signal, never a fallback).
+get_oem() {
+    local deb
+    if [[ -n "$DEB_PATH" ]]; then
+        [[ -r "$DEB_PATH" ]] || die "deb not readable: $DEB_PATH"
+        deb="$DEB_PATH"; log "Using supplied deb: $deb"
+    else
+        local dir; dir="$(download_dir)"; mkdir -p -- "$dir"
+        deb="${dir}/${DEB_NAME}"
+        if [[ -r "$deb" ]] && verify_file "$deb" "$DEB_NAME" 2>/dev/null; then
+            ok "Reusing verified deb: $deb"
+        else
+            download "$deb" "${DEB_MIRRORS[@]}" || return 1
+        fi
+    fi
+    log "Verifying SHA256 (OEM deb)..."
+    verify_file "$deb" "$DEB_NAME" || die "checksum mismatch for $deb; refusing the OEM deb."
+    ok "OEM deb verified."
+    dpkg-deb -x "$deb" "${STAGE}/extract" || die "failed to extract $deb"
+    return 0
+}
+
+# ── Obtain from the Broadcom upstream tarball, normalised to the same layout ─
+#    install_trees expects. Returns 1 only if it cannot be downloaded.
+get_upstream() {
+    local tgz
+    if [[ -n "$TGZ_PATH" ]]; then
+        [[ -r "$TGZ_PATH" ]] || die "tarball not readable: $TGZ_PATH"
+        tgz="$TGZ_PATH"; log "Using supplied tarball: $tgz"
+    else
+        local dir; dir="$(download_dir)"; mkdir -p -- "$dir"
+        tgz="${dir}/${TGZ_NAME}"
+        if [[ -r "$tgz" ]] && verify_file "$tgz" "$TGZ_NAME" 2>/dev/null; then
+            ok "Reusing verified tarball: $tgz"
+        else
+            download "$tgz" "${TGZ_MIRRORS[@]}" || return 1
+        fi
+    fi
+    log "Verifying SHA256 (Broadcom upstream tarball)..."
+    verify_file "$tgz" "$TGZ_NAME" || die "checksum mismatch for $tgz; refusing the upstream tarball."
+    ok "Upstream tarball verified."
+
+    mkdir -p -- "${STAGE}/tgz"
+    tar -xzf "$tgz" -C "${STAGE}/tgz" || die "failed to extract $tgz"
+    local root="${STAGE}/tgz/brcm_linux_fp"
+    [[ -d "$root" ]] || die "unexpected tarball layout (no brcm_linux_fp/ root)."
+    # Normalise into the canonical extraction layout. The tarball keeps the
+    # udev rule under lib/udev; move it under usr/lib/udev so the installed
+    # paths (and so backup/uninstall) match the OEM deb exactly.
+    [[ -d "${root}/usr" ]] && cp -a -- "${root}/usr" "${STAGE}/extract/"
+    [[ -d "${root}/var" ]] && cp -a -- "${root}/var" "${STAGE}/extract/"
+    if [[ -d "${root}/lib/udev/rules.d" ]]; then
+        mkdir -p -- "${STAGE}/extract/usr/lib/udev/rules.d"
+        cp -a -- "${root}/lib/udev/rules.d/." "${STAGE}/extract/usr/lib/udev/rules.d/"
+    fi
+    [[ -r "${STAGE}/extract/${TREES[0]}" ]] || die "tarball did not yield the expected driver .so."
+    return 0
+}
+
+# ── Choose a source and populate ${STAGE}/extract ───────────────────────────
+obtain_payload() {
+    mkdir -p -- "${STAGE}/extract"
+    case "$SOURCE" in
+        oem)      get_oem || die "could not download the OEM deb. See SOURCES for manual options." ;;
+        upstream) get_upstream || die "could not download the Broadcom upstream tarball. See SOURCES." ;;
+        auto)
+            if get_oem; then
+                :
+            else
+                warn "OEM source unreachable; falling back to the Broadcom upstream tarball (see SOURCES)."
+                get_upstream || die "neither the OEM deb nor the Broadcom upstream is reachable. See SOURCES."
+            fi
+            ;;
+    esac
+}
+
+# ── Idempotency short-circuit: is the staged .so already installed? ──────────
 already_installed() {
     [[ -r "$DRIVER_SO" ]] || return 1
     local staged_so="${STAGE}/extract/${TREES[0]}"
@@ -189,7 +294,7 @@ already_installed() {
     [[ "$a" == "$b" ]]
 }
 
-# ── Step 5: back up anything we are about to overwrite ──────────────────────
+# ── Back up anything we are about to overwrite ──────────────────────────────
 backup_existing() {
     local stamp backup_dir manifest tree target
     stamp="$(date +%Y%m%d-%H%M%S)"
@@ -212,26 +317,24 @@ backup_existing() {
     fi
 }
 
-# ── Step 6: lay the trees into / (atomic per-tree via tar) ──────────────────
+# ── Lay the trees the source provided into / (atomic per-tree via tar) ──────
 install_trees() {
-    log "Installing driver, udev rule, firmware updater, and firmware..."
-    ( cd -- "${STAGE}/extract" && tar -cf - -- "${TREES[@]}" ) | tar -xf - -C / \
+    log "Installing driver payload..."
+    local present=() tree
+    for tree in "${TREES[@]}"; do
+        [[ -e "${STAGE}/extract/${tree}" ]] && present+=("$tree")
+    done
+    [[ ${#present[@]} -gt 0 ]] || die "extraction produced no known payload to install."
+    ( cd -- "${STAGE}/extract" && tar -cf - -- "${present[@]}" ) | tar -xf - -C / \
         || die "failed to lay payload into /"
-    ok "Payload installed."
+    ok "Payload installed (${#present[@]} trees)."
 }
 
 main() {
     preflight
 
     STAGE="$(mktemp -d -t latitude-fp.XXXXXX)" || die "cannot create staging dir"
-    fetch_deb
-
-    log "Verifying SHA256..."
-    verify_sum "$DEB_PATH" || die "checksum mismatch for $DEB_PATH; refusing to install a deb that does not match the pinned hash."
-    ok "Checksum verified."
-
-    mkdir -p -- "${STAGE}/extract"
-    dpkg-deb -x "$DEB_PATH" "${STAGE}/extract" || die "failed to extract $DEB_PATH"
+    obtain_payload
 
     if already_installed && [[ $FORCE -eq 0 ]]; then
         ok "Matching driver already installed; nothing to do (use --force to reinstall)."
@@ -250,6 +353,8 @@ main() {
     if [[ -x "$FW_UPDATER" ]]; then
         log "Settling sensor firmware (update-fw.py)..."
         python3 "$FW_UPDATER" || warn "firmware-settle step returned non-zero; the driver usually finishes this in the background."
+    else
+        log "No firmware-settle helper for this source; the driver settles firmware on first sensor access."
     fi
 
     ok "Done. Enrol a finger with:  fprintd-enroll \"\$USER\""
