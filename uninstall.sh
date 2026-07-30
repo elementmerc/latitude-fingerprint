@@ -90,6 +90,15 @@ if [[ $RESTORE -eq 1 ]]; then
         log "Restoring originals from ${BACKUP_DIR}..."
         while IFS= read -r tree; do
             [[ -n "$tree" ]] || continue
+            # Only ever restore to a path this tool installs. --backup takes a
+            # caller-supplied directory, so the manifest is untrusted input, and
+            # an entry like "../etc/shadow" would otherwise be written as root.
+            known=0
+            for t in "${TREES[@]}"; do [[ "$tree" == "$t" ]] && known=1; done
+            if [[ $known -eq 0 ]]; then
+                warn "ignoring unexpected backup entry: ${tree}"
+                continue
+            fi
             src="${BACKUP_DIR}/${tree}"
             [[ -e "$src" ]] || { warn "backup entry missing: $src"; continue; }
             mkdir -p -- "$(dirname -- "/${tree}")"
