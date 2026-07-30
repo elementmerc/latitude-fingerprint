@@ -58,15 +58,18 @@ jobs:
       # `warning`. Deliberate: a gate configured to ignore a whole class of
       # finding is not much of a gate, and the handful of genuine exceptions
       # carry an inline `shellcheck disable` with the reason next to the code.
+      # Pinned by digest, and the same image scripts/preflight.sh uses locally.
+      # Installing whatever apt has meant CI ran 0.9.0 while a developer ran a
+      # newer build, so a clean local run said nothing about the gate.
       - name: Run shellcheck
         run: |
           set -euo pipefail
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends shellcheck
-          shellcheck --version
+          docker run --rm -v "$PWD":/mnt:ro -w /mnt \
+            koalaman/shellcheck-alpine@sha256:c82fe42504fbc9fc68f15d36638e5ee2324ebb8b94e96a3c4e395bf361c49183 shellcheck --version
           # shellcheck's own exit status is the gate; xargs -r guards the
           # nothing-to-lint case rather than passing an empty argument list.
           # -z / -0: git C-escapes names with spaces or quotes, so a plain
           # pipeline would mangle them and silently skip the file.
-          git ls-files -z '*.sh' | xargs -0 -r shellcheck --severity=style --format=gcc
+          git ls-files -z '*.sh' | xargs -0 -r docker run --rm -v "$PWD":/mnt:ro -w /mnt \
+            koalaman/shellcheck-alpine@sha256:c82fe42504fbc9fc68f15d36638e5ee2324ebb8b94e96a3c4e395bf361c49183 shellcheck --severity=style --format=gcc
           echo "No shellcheck findings."

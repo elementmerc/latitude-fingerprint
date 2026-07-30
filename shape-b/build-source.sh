@@ -27,7 +27,7 @@ readonly PKG="libfprint-2-tod1-broadcom-installer"
 # the changelog yields `0.3.0` and the suffix is rebuilt per suite below.
 read_base_version() {
     local full
-    full="$(cd -- "$SHAPE_B_DIR" && dpkg-parsechangelog --show-field Version 2>/dev/null || true)"
+    full="$(cd -- "$SHAPE_B_DIR" && dpkg-parsechangelog --show-field Version 2>/dev/null)" || full=""
     [[ -n "$full" ]] || die "cannot read a version from debian/changelog"
     printf '%s' "${full%%\~*}"
 }
