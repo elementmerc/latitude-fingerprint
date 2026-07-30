@@ -56,6 +56,14 @@ readonly FW_UPDATER="/usr/libexec/libfprint-2-tod1-broadcom/update-fw.py"
 readonly SENSOR_ID="0a5c:5843"
 readonly BACKUP_ROOT="/var/backups/latitude-fingerprint"
 
+# Ownership marker. Written on the first install and cleared by uninstall.sh, it
+# is how a later run tells "these files are the user's, back them up" from "these
+# files are ours, leave the original backup alone". Without it, a second install
+# snapshots our own driver as though it were the user's, and the uninstall then
+# faithfully restores it, so removal silently leaves the driver in place.
+readonly STATE_DIR="/var/lib/latitude-fingerprint"
+readonly STATE_FILE="${STATE_DIR}/install-state"
+
 readonly SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 readonly SUMS_FILE="${SCRIPT_DIR}/SHA256SUMS"
 
@@ -295,7 +303,19 @@ already_installed() {
 }
 
 # ── Back up anything we are about to overwrite ──────────────────────────────
+#
+# Only the FIRST install can find files that belong to the user; on every run
+# after that the files at these paths are the ones we laid down ourselves. The
+# ownership marker records which of the two situations we are in, so a re-run
+# (a retry after a failed fetch, an apt reinstall, a switch between --source
+# oem and --source upstream, a suite upgrade) never overwrites the record of
+# what was on the machine before we touched it.
 backup_existing() {
+    if [[ -f "$STATE_FILE" ]]; then
+        log "Already installed by this tool; keeping the original backup record."
+        return 0
+    fi
+
     local stamp backup_dir manifest tree target
     stamp="$(date +%Y%m%d-%H%M%S)"
     backup_dir="${BACKUP_ROOT}/${stamp}"
@@ -314,7 +334,28 @@ backup_existing() {
         ok "Backed up existing files to ${backup_dir} (restore with uninstall.sh)."
     else
         log "No existing driver files to back up (clean install)."
+        backup_dir="none"
     fi
+
+    write_state "$backup_dir"
+}
+
+# The marker is written only after the backup succeeded, so an install that dies
+# mid-backup leaves no marker and the next run redoes the backup rather than
+# assuming one exists. Written via a temp file and renamed, so a marker is never
+# half-written. Plain key=value, and it is PARSED rather than sourced: a state
+# file that gets executed is a root-owned code-execution path.
+write_state() {
+    local backup_dir="$1" tmp
+    mkdir -p -- "$STATE_DIR"
+    tmp="$(mktemp -- "${STATE_FILE}.XXXXXX")" || die "cannot write install state to ${STATE_DIR}"
+    {
+        printf '# latitude-fingerprint install state. Managed by install.sh; do not edit.\n'
+        printf 'owned_since=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        printf 'backup_dir=%s\n' "$backup_dir"
+    } >"$tmp"
+    chmod 644 -- "$tmp"
+    mv -f -- "$tmp" "$STATE_FILE"
 }
 
 # ── Lay the trees the source provided into / (atomic per-tree via tar) ──────

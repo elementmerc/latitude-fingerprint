@@ -14,6 +14,8 @@ readonly TREES=(
     "var/lib/fprint/fw"
 )
 readonly BACKUP_ROOT="/var/backups/latitude-fingerprint"
+readonly STATE_DIR="/var/lib/latitude-fingerprint"
+readonly STATE_FILE="${STATE_DIR}/install-state"
 
 if [[ -t 1 ]]; then
     readonly C_BOLD=$'\033[1m' C_RED=$'\033[31m' C_GREEN=$'\033[32m' C_YEL=$'\033[33m' C_OFF=$'\033[0m'
@@ -60,9 +62,29 @@ for tree in "${TREES[@]}"; do
 done
 
 if [[ $RESTORE -eq 1 ]]; then
-    if [[ -z "$BACKUP_DIR" && -d "$BACKUP_ROOT" ]]; then
-        # Most recent timestamped backup, if any.
-        BACKUP_DIR="$(find "$BACKUP_ROOT" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort | tail -n1)"
+    if [[ -z "$BACKUP_DIR" ]]; then
+        # Which backup holds the machine's ORIGINAL files, as opposed to a
+        # snapshot of a driver this tool had already installed.
+        if [[ -f "$STATE_FILE" ]]; then
+            # The marker names it outright. "none" means the first install found
+            # nothing to displace, so there is nothing to put back.
+            recorded="$(grep -m1 '^backup_dir=' "$STATE_FILE" 2>/dev/null | cut -d= -f2- || true)"
+            if [[ "$recorded" == "none" ]]; then
+                log "Clean install recorded; nothing to restore."
+            elif [[ -n "$recorded" ]]; then
+                BACKUP_DIR="$recorded"
+            fi
+        elif [[ -d "$BACKUP_ROOT" ]]; then
+            # No marker: an install from before the marker existed. The OLDEST
+            # backup is the only one that can hold the user's own files, because
+            # every later one was taken with our driver already in place. Taking
+            # the most recent instead is what used to restore our own driver and
+            # leave it installed after a removal.
+            BACKUP_DIR="$(find "$BACKUP_ROOT" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort | head -n1)"
+            if [[ -n "$BACKUP_DIR" ]]; then
+                warn "No install marker (installed by an older version); restoring the oldest backup, ${BACKUP_DIR}."
+            fi
+        fi
     fi
     if [[ -n "$BACKUP_DIR" && -f "${BACKUP_DIR}/manifest.txt" ]]; then
         log "Restoring originals from ${BACKUP_DIR}..."
@@ -78,6 +100,14 @@ if [[ $RESTORE -eq 1 ]]; then
     else
         log "No backup to restore (clean removal)."
     fi
+fi
+
+# Cleared last, and only once the trees are gone, so an uninstall that dies
+# half way leaves the marker in place and a re-run still knows the backup this
+# machine belongs to.
+if [[ -f "$STATE_FILE" ]]; then
+    rm -f -- "$STATE_FILE"
+    rmdir -- "$STATE_DIR" 2>/dev/null || true
 fi
 
 log "Reloading udev rules..."
