@@ -31,8 +31,8 @@ usage() {
     cat <<EOF
 Usage: sudo $0 [--backup DIR] [--no-restore] [-h|--help]
 
-  --backup DIR   Restore from this backup dir (default: most recent under
-                 ${BACKUP_ROOT}).
+  --backup DIR   Restore from this backup dir (default: the one recorded when
+                 the driver was first installed, under ${BACKUP_ROOT}).
   --no-restore   Just remove the driver; do not restore any backup.
   -h, --help     Show this help.
 EOF
