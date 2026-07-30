@@ -6,19 +6,27 @@ LIBEXEC=/usr/libexec/libfprint-2-tod1-broadcom-installer
 
 case "$1" in
     configure)
-        if [ -x "$LIBEXEC/install.sh" ]; then
-            echo "Fetching and installing the Broadcom fingerprint driver from Canonical..."
-            if ! "$LIBEXEC/install.sh"; then
-                echo "" >&2
-                echo "The fingerprint driver could not be installed. The most likely cause" >&2
-                echo "is that neither source could be reached: Canonical's archive, nor the" >&2
-                echo "Broadcom upstream tarball it falls back to." >&2
-                echo "Once the network is reachable, retry with:" >&2
-                echo "  sudo apt install --reinstall libfprint-2-tod1-broadcom-installer" >&2
-                echo "or run the installer directly:" >&2
-                echo "  sudo $LIBEXEC/install.sh" >&2
-                exit 1
-            fi
+        # Absence is corruption, not a condition: this package ships the script.
+        if [ ! -x "$LIBEXEC/install.sh" ]; then
+            echo "error: $LIBEXEC/install.sh is missing or not executable, so the" >&2
+            echo "       driver was not installed. Restore it with:" >&2
+            echo "         sudo apt install --reinstall libfprint-2-tod1-broadcom-installer" >&2
+            exit 1
+        fi
+        echo "Fetching and installing the Broadcom fingerprint driver..."
+        echo "It comes from Canonical's archive, or from Broadcom's own download if"
+        echo "Canonical's copy cannot be reached. Nothing is installed unless it matches"
+        echo "a checksum shipped with this package."
+        if ! "$LIBEXEC/install.sh"; then
+            echo "" >&2
+            echo "The fingerprint driver could not be installed. The most likely cause is" >&2
+            echo "that neither source could be reached: Canonical's archive, nor the" >&2
+            echo "Broadcom download it falls back to." >&2
+            echo "Once you are online again, retry with:" >&2
+            echo "  sudo apt install --reinstall libfprint-2-tod1-broadcom-installer" >&2
+            echo "or run the installer directly:" >&2
+            echo "  sudo $LIBEXEC/install.sh" >&2
+            exit 1
         fi
         ;;
     abort-upgrade|abort-remove|abort-deconfigure)

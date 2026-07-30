@@ -8,19 +8,29 @@ LIBEXEC=/usr/libexec/libfprint-2-tod1-broadcom-installer
 # the installer backed up. uninstall.sh leaves enrolled fingerprints untouched.
 case "$1" in
     remove)
-        if [ -x "$LIBEXEC/uninstall.sh" ]; then
-            # Deliberately NOT "|| true". A failure here means the proprietary
-            # driver is still on the machine, and reporting a clean removal in
-            # that state is the one outcome a user must never get: they asked
-            # for the blob to go and would be told it had.
-            if ! "$LIBEXEC/uninstall.sh"; then
-                echo "error: could not remove the fingerprint driver files." >&2
-                echo "       The driver is still installed. Run this by hand to see why:" >&2
-                echo "         sudo $LIBEXEC/uninstall.sh" >&2
-                echo "       then retry the removal." >&2
-                exit 1
-            fi
+        # Absence is corruption, not a condition: this package ships the script.
+        # A soft "if executable" guard here exited 0 and let dpkg report a clean
+        # removal with the proprietary driver still on disk.
+        if [ ! -x "$LIBEXEC/uninstall.sh" ]; then
+            echo "error: $LIBEXEC/uninstall.sh is missing or not executable." >&2
+            echo "       The fingerprint driver is still installed. Restore the script and" >&2
+            echo "       try again:" >&2
+            echo "         sudo apt install --reinstall libfprint-2-tod1-broadcom-installer" >&2
+            exit 1
         fi
+        # Deliberately not "|| true". A failure means the proprietary driver is
+        # still on the machine, and reporting a clean removal in that state is
+        # the one outcome a user must never get: they asked for the blob to go
+        # and would be told it had.
+        if ! "$LIBEXEC/uninstall.sh"; then
+            echo "error: could not remove the fingerprint driver files." >&2
+            echo "       The driver is still installed. Run this by hand to see why:" >&2
+            echo "         sudo $LIBEXEC/uninstall.sh" >&2
+            echo "       then retry the removal." >&2
+            exit 1
+        fi
+        ;;
+    upgrade|deconfigure|failed-upgrade)
         ;;
 esac
 

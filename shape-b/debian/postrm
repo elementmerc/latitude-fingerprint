@@ -1,0 +1,49 @@
+#!/bin/sh
+# SPDX-License-Identifier: AGPL-3.0-or-later
+set -e
+
+# Without a postrm, two things had no owner. An install whose postinst failed
+# left dpkg calling abort-install against nothing, so a half-laid payload and
+# the install marker survived with no package accountable for them. And purge
+# left the marker, the backups and the download cache behind for good.
+
+STATE_DIR=/var/lib/latitude-fingerprint
+CACHE_DIR=/var/cache/latitude-fingerprint
+BACKUP_ROOT=/var/backups/latitude-fingerprint
+LIBEXEC=/usr/libexec/libfprint-2-tod1-broadcom-installer
+
+case "$1" in
+    purge)
+        # The marker and the cache are ours and carry nothing the user authored.
+        rm -f "$STATE_DIR/install-state"
+        rmdir "$STATE_DIR" 2>/dev/null || true
+        rm -rf "$CACHE_DIR"
+        # The backups may hold files that were on the machine BEFORE this package
+        # was ever installed, so they are not deleted silently. Purge is the
+        # user asking for our state to go, not for their own files to go.
+        if [ -d "$BACKUP_ROOT" ]; then
+            echo "note: backups of files this package displaced are kept at $BACKUP_ROOT."
+            echo "      Delete them yourself if you no longer want them."
+        fi
+        ;;
+    abort-install|abort-upgrade)
+        # The install failed part way. Clear only our own marker, so the next
+        # attempt starts from a known state and can take a fresh backup; never
+        # touch the payload here, because prerm/uninstall.sh owns that path.
+        rm -f "$STATE_DIR/install-state"
+        rmdir "$STATE_DIR" 2>/dev/null || true
+        ;;
+    remove|upgrade|failed-upgrade|disappear)
+        ;;
+esac
+
+# The cache lives under the package's own directory on installs from before it
+# moved to /var/cache; clean that up on the way out too.
+if [ "$1" = "purge" ]; then
+    rm -rf "$LIBEXEC/.cache"
+    rmdir "$LIBEXEC" 2>/dev/null || true
+fi
+
+#DEBHELPER#
+
+exit 0
