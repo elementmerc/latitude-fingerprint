@@ -9,7 +9,10 @@ driver can be installed with `apt` instead of running a script by hand.
 The published `.deb` is tiny. It contains no driver, only the install scripts
 from the repository root. When you install it, its post-install step downloads
 the driver from Canonical's archive, checks it against the pinned SHA256, and
-installs it. If the download fails, the install fails and nothing is changed.
+installs it. If Canonical's copy cannot be downloaded it falls back to
+Broadcom's own download, pinned and checked the same way, and says on screen
+that it did. If neither can be reached, the install fails and nothing is
+changed. See `docs/LICENSING.md` for what each source means.
 
 This is the same fetch-and-verify approach used by other packages that install
 third-party files they are not allowed to redistribute, such as the Microsoft
@@ -58,5 +61,9 @@ upload it with the two commands the script prints when it finishes.
 
 | Suite | Ubuntu release | Package version |
 |---|---|---|
-| noble | 24.04 LTS | `0.1.0~24.04.1` |
-| resolute | 26.04 LTS | `0.1.0~26.04.1` |
+| noble | 24.04 LTS | `<release>~24.04.1` |
+| resolute | 26.04 LTS | `<release>~26.04.1` |
+
+`<release>` is the project's current release, which `build-source.sh` reads from
+the newest CHANGELOG heading. It is not written down here, because a version
+copied into prose goes stale the first time one ships.
