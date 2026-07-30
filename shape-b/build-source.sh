@@ -14,7 +14,18 @@ set -euo pipefail
 readonly SHAPE_B_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 readonly REPO_ROOT="$(cd -- "${SHAPE_B_DIR}/.." >/dev/null 2>&1 && pwd)"
 readonly PKG="libfprint-2-tod1-broadcom-installer"
-readonly BASE_VERSION="0.1.0"
+
+# The package version tracks the project's release, read from the newest
+# CHANGELOG heading rather than hardcoded here. Hardcoding it is what left both
+# published PPA builds on 0.1.0 while the git tags moved on, so the version a
+# user quotes from `apt policy` identified nothing. Deriving it also means the
+# CHANGELOG entry must exist before anything can be uploaded.
+read_base_version() {
+    local v
+    v="$(grep -m1 -oE '^## v[0-9]+\.[0-9]+\.[0-9]+' "${REPO_ROOT}/CHANGELOG.md" 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || true)"
+    [[ -n "$v" ]] || die "cannot read a version from the newest CHANGELOG.md heading (expected '## vX.Y.Z ...')"
+    printf '%s' "$v"
+}
 
 # Files single-sourced from the repository root into the build tree.
 readonly PAYLOAD=(install.sh uninstall.sh SHA256SUMS SOURCES)
@@ -44,6 +55,8 @@ case "$SUITE" in
     resolute) readonly SERIES="26.04" ;;
     *) die "unsupported suite '$SUITE' (supported: noble, resolute)" ;;
 esac
+BASE_VERSION="$(read_base_version)" || exit 1
+readonly BASE_VERSION
 readonly VERSION="${BASE_VERSION}~${SERIES}.1"
 
 # Pre-flight: the single-source files and the packaging must be present.
@@ -52,6 +65,13 @@ for f in "${PAYLOAD[@]}"; do
 done
 [[ -d "${SHAPE_B_DIR}/debian" ]] || die "missing debian/ tree in ${SHAPE_B_DIR}"
 command -v dpkg-buildpackage >/dev/null 2>&1 || die "dpkg-buildpackage not found (apt install dpkg-dev)"
+
+# Only the first line of debian/changelog gets stamped below, so the body is the
+# half that silently goes stale. A body still describing the first release on a
+# later version is the drift this refuses to upload.
+if [[ "$BASE_VERSION" != "0.1.0" ]] && grep -qi 'Initial release' "${SHAPE_B_DIR}/debian/changelog"; then
+    die "debian/changelog still reads 'Initial release' while building ${BASE_VERSION}; update the entry body first."
+fi
 
 readonly BUILD_DIR="${SHAPE_B_DIR}/build/${SUITE}"
 readonly SRC_DIR="${BUILD_DIR}/${PKG}-${BASE_VERSION}"
