@@ -12,10 +12,24 @@ driver itself is closed.
 | The Broadcom driver | The `.so` plugin, its firmware blobs, and the PSK file | Proprietary ("Broadcom-tod"); shipped by Canonical, owned by Broadcom |
 
 We never bundle, mirror, or redistribute the proprietary driver. Our packaging
-fetches it from Canonical's archive (`dell.archive.canonical.com`) on the user's
-own machine, at install time, and verifies it against a pinned SHA256. The
-binary only ever travels from Canonical to the end user. It never passes
-through us, the PPA, or the GitHub Releases mirror.
+fetches it on the user's own machine, at install time, and verifies it against a
+pinned SHA256. The binary only ever travels from its owner to the end user. It
+never passes through us, the PPA, or the GitHub Releases mirror.
+
+There are two places it can come from, and they are not interchangeable:
+
+| Source | When it is used | Whose terms you accept |
+|---|---|---|
+| Canonical's archive (`dell.archive.canonical.com`) | Always, unless it cannot be reached | Broadcom's, via the build Canonical packages and ships |
+| Broadcom's own download (`packages.broadcom.com`) | Only when Canonical's copy cannot be downloaded | Broadcom's, accepted directly from Broadcom |
+
+Both carry the same driver version, `5.15.285-5.15.010.0`, and each has its own
+pinned SHA256 in `SHA256SUMS`. They are not the same bytes: Canonical rebuilds
+and repackages the driver, and that Canonical build is the one this project has
+tested on real hardware. The fallback exists so that a moved or withdrawn file
+does not leave you with a fingerprint reader that cannot work at all. When it is
+used, the installer says so on screen rather than quietly swapping one build for
+another.
 
 ## Why this is allowed (mere aggregation)
 
@@ -49,6 +63,13 @@ precedent deliberately.
 ## Provenance
 
 Every fetch is pinned to a known URL and verified against a recorded SHA256
-(see `SOURCES`). If Canonical moves or removes the file, the fetch fails loudly
-rather than installing something unverified. A documented list of user-fetched
-fallback mirrors can be added if Canonical's path ever moves.
+(see `SOURCES`). Nothing unverified is ever installed: if the bytes do not match
+the pinned hash, the install stops there and does not try anywhere else, because
+a mismatch is a tampering or corruption signal rather than a reason to shop
+around. Being unable to download is the different case, and the only one that
+moves to the second source above.
+
+The transport is not the guarantee. Canonical's host currently times out over
+https, so the installer tries https first and falls back to plain http; the
+pinned hash is what makes that safe, and a file that arrives over http with the
+wrong hash is refused exactly like any other.
