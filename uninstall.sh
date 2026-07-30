@@ -120,6 +120,7 @@ if [[ -f "$STATE_FILE" ]]; then
 fi
 
 log "Reloading udev rules..."
+# shellcheck disable=SC2015  # warn on either failing is the intent, not if-then-else
 udevadm control --reload && udevadm trigger || warn "udev reload reported a problem; a reboot will also apply."
 
 log "Restarting fprintd..."

@@ -11,8 +11,10 @@
 
 set -euo pipefail
 
-readonly SHAPE_B_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
-readonly REPO_ROOT="$(cd -- "${SHAPE_B_DIR}/.." >/dev/null 2>&1 && pwd)"
+SHAPE_B_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+readonly SHAPE_B_DIR
+REPO_ROOT="$(cd -- "${SHAPE_B_DIR}/.." >/dev/null 2>&1 && pwd)"
+readonly REPO_ROOT
 readonly PKG="libfprint-2-tod1-broadcom-installer"
 
 # The package version tracks the project's release, read from the newest

@@ -64,7 +64,8 @@ readonly BACKUP_ROOT="/var/backups/latitude-fingerprint"
 readonly STATE_DIR="/var/lib/latitude-fingerprint"
 readonly STATE_FILE="${STATE_DIR}/install-state"
 
-readonly SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+readonly SCRIPT_DIR
 readonly SUMS_FILE="${SCRIPT_DIR}/SHA256SUMS"
 
 # ── Output helpers ──────────────────────────────────────────────────────────
@@ -293,8 +294,14 @@ USED_SOURCE=""
 obtain_payload() {
     mkdir -p -- "${STAGE}/extract"
     case "$SOURCE" in
-        oem)      get_oem && USED_SOURCE="oem" || die "could not download the OEM deb. See SOURCES for manual options." ;;
-        upstream) get_upstream && USED_SOURCE="upstream" || die "could not download the Broadcom upstream tarball. See SOURCES." ;;
+        oem)
+            get_oem || die "could not download the OEM deb. See SOURCES for manual options."
+            USED_SOURCE="oem"
+            ;;
+        upstream)
+            get_upstream || die "could not download the Broadcom upstream tarball. See SOURCES."
+            USED_SOURCE="upstream"
+            ;;
         auto)
             if get_oem; then
                 USED_SOURCE="oem"
@@ -419,6 +426,7 @@ main() {
     install_trees
 
     log "Reloading udev rules..."
+    # shellcheck disable=SC2015  # warn on either failing is the intent, not if-then-else
     udevadm control --reload && udevadm trigger || warn "udev reload reported a problem; a reboot will also apply the rule."
 
     log "Restarting fprintd..."
