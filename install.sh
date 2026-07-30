@@ -64,6 +64,16 @@ readonly BACKUP_ROOT="/var/backups/latitude-fingerprint"
 readonly STATE_DIR="/var/lib/latitude-fingerprint"
 readonly STATE_FILE="${STATE_DIR}/install-state"
 
+# The driver .so as built by each source: same version, two builds, and the only
+# two files this tool ever lays at DRIVER_SO. A file matching either is one we
+# put there, never the user's own, which is what the marker alone could not tell
+# on a machine installed before the marker existed. Verified by the container
+# smoke, which asserts the laid .so per source.
+readonly KNOWN_DRIVER_SHA256=(
+    "e26efcd654b9773f7403bc3b386fa65e80124111d15dbdfc55e15e8e0deddd09"  # Canonical OEM build
+    "ab34713aa338c162d20dcc01ef8ba847a3635e3517e0aa22185c29facb9d7c00"  # Broadcom upstream build
+)
+
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 readonly SCRIPT_DIR
 readonly SUMS_FILE="${SCRIPT_DIR}/SHA256SUMS"
@@ -339,6 +349,17 @@ already_installed() {
     [[ "$a" == "$b" ]]
 }
 
+# Is the driver currently on disk one this tool installed?
+driver_is_ours() {
+    [[ -r "$DRIVER_SO" ]] || return 1
+    local actual known
+    actual="$(sha256sum -- "$DRIVER_SO" | awk '{print $1}')"
+    for known in "${KNOWN_DRIVER_SHA256[@]}"; do
+        [[ "$actual" == "$known" ]] && return 0
+    done
+    return 1
+}
+
 # ── Back up anything we are about to overwrite ──────────────────────────────
 #
 # Only the FIRST install can find files that belong to the user; on every run
@@ -350,6 +371,18 @@ already_installed() {
 backup_existing() {
     if [[ -f "$STATE_FILE" ]]; then
         log "Already installed by this tool; keeping the original backup record."
+        return 0
+    fi
+
+    # No marker is not the same as a clean machine. Anything installed before
+    # the marker existed has our driver in place and no record of it, and a
+    # snapshot taken now would record OUR driver as the user's original: the
+    # uninstall would then put it back and removal would leave the driver
+    # installed. The .so decides it, because the rest of the payload is only
+    # ever there because a driver install put it there.
+    if driver_is_ours; then
+        log "Driver already in place from an earlier install by this tool; nothing of yours to back up."
+        write_state "none"
         return 0
     fi
 

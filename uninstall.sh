@@ -17,6 +17,24 @@ readonly BACKUP_ROOT="/var/backups/latitude-fingerprint"
 readonly STATE_DIR="/var/lib/latitude-fingerprint"
 readonly STATE_FILE="${STATE_DIR}/install-state"
 
+# The two driver builds this tool installs (see install.sh). A backup entry
+# matching either is a snapshot of our own driver rather than anything the user
+# had, and restoring it would leave the driver installed after a removal.
+readonly KNOWN_DRIVER_SHA256=(
+    "e26efcd654b9773f7403bc3b386fa65e80124111d15dbdfc55e15e8e0deddd09"  # Canonical OEM build
+    "ab34713aa338c162d20dcc01ef8ba847a3635e3517e0aa22185c29facb9d7c00"  # Broadcom upstream build
+)
+
+is_known_driver() {
+    [[ -f "$1" ]] || return 1
+    local actual known
+    actual="$(sha256sum -- "$1" | awk '{print $1}')"
+    for known in "${KNOWN_DRIVER_SHA256[@]}"; do
+        [[ "$actual" == "$known" ]] && return 0
+    done
+    return 1
+}
+
 if [[ -t 1 ]]; then
     readonly C_BOLD=$'\033[1m' C_RED=$'\033[31m' C_GREEN=$'\033[32m' C_YEL=$'\033[33m' C_OFF=$'\033[0m'
 else
@@ -101,6 +119,13 @@ if [[ $RESTORE -eq 1 ]]; then
             fi
             src="${BACKUP_DIR}/${tree}"
             [[ -e "$src" ]] || { warn "backup entry missing: $src"; continue; }
+            # A backup written before the ownership marker existed can hold our
+            # own driver. Putting that back would undo the removal the user just
+            # asked for, so it is skipped however the backup came to be recorded.
+            if is_known_driver "$src"; then
+                warn "skipping ${tree}: that backup holds this tool's own driver, not a file of yours."
+                continue
+            fi
             mkdir -p -- "$(dirname -- "/${tree}")"
             cp -a -- "$src" "/${tree}"
             log "restored /${tree}"
