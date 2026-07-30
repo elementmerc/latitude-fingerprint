@@ -50,11 +50,15 @@ readonly TREES=(
     "usr/lib/udev/rules.d/60-libfprint-2-device-broadcom.rules"
     "usr/libexec/libfprint-2-tod1-broadcom"
     "var/lib/fprint/fw"
+    "usr/share/doc/libfprint-2-tod1-broadcom"
 )
 readonly DRIVER_SO="/usr/lib/x86_64-linux-gnu/libfprint-2/tod-1/libfprint-2-tod-1-broadcom.so"
 readonly FW_UPDATER="/usr/libexec/libfprint-2-tod1-broadcom/update-fw.py"
 readonly SENSOR_ID="0a5c:5843"
 readonly BACKUP_ROOT="/var/backups/latitude-fingerprint"
+
+readonly CACHE_DIR="/var/cache/latitude-fingerprint"
+readonly LOCK_FILE="/var/lock/latitude-fingerprint.lock"
 
 # Ownership marker. Written on the first install and cleared by uninstall.sh, it
 # is how a later run tells "these files are the user's, back them up" from "these
@@ -67,8 +71,8 @@ readonly STATE_FILE="${STATE_DIR}/install-state"
 # The driver .so as built by each source: same version, two builds, and the only
 # two files this tool ever lays at DRIVER_SO. A file matching either is one we
 # put there, never the user's own, which is what the marker alone could not tell
-# on a machine installed before the marker existed. Verified by the container
-# smoke, which asserts the laid .so per source.
+# on a machine installed before the marker existed. Both values are checked on
+# every release against the artefacts the pins in SHA256SUMS name.
 readonly KNOWN_DRIVER_SHA256=(
     "e26efcd654b9773f7403bc3b386fa65e80124111d15dbdfc55e15e8e0deddd09"  # Canonical OEM build
     "ab34713aa338c162d20dcc01ef8ba847a3635e3517e0aa22185c29facb9d7c00"  # Broadcom upstream build
@@ -87,10 +91,16 @@ fi
 log()  { printf '%s[fp]%s %s\n' "$C_BOLD" "$C_OFF" "$*"; }
 ok()   { printf '%s[fp]%s %s%s%s\n' "$C_BOLD" "$C_OFF" "$C_GREEN" "$*" "$C_OFF"; }
 warn() { printf '%s[fp]%s %s%s%s\n' "$C_BOLD" "$C_OFF" "$C_YEL" "$*" "$C_OFF" >&2; }
+# Armed once the payload is on disk. Before that a failure is a download, an
+# argument or a pre-flight problem, and pointing the user at fprintd's logs for
+# a mistyped flag makes the tool look like it does not know what went wrong.
+DIAGNOSTICS=0
 die() {
     printf '%s[fp] error:%s %s\n' "$C_RED" "$C_OFF" "$*" >&2
-    printf '%s[fp]%s diagnostics: %ssudo journalctl -u fprintd -b%s and %sdmesg | tail%s\n' \
-        "$C_BOLD" "$C_OFF" "$C_BOLD" "$C_OFF" "$C_BOLD" "$C_OFF" >&2
+    if [[ $DIAGNOSTICS -eq 1 ]]; then
+        printf '%s[fp]%s diagnostics: %ssudo journalctl -u fprintd -b%s and %sdmesg | tail%s\n' \
+            "$C_BOLD" "$C_OFF" "$C_BOLD" "$C_OFF" "$C_BOLD" "$C_OFF" >&2
+    fi
     exit 1
 }
 
@@ -101,12 +111,17 @@ STAGE=""
 # `install.sh --help` exit 1: STAGE is still empty that early, the test fails,
 # and the trap's failure becomes the script's.
 cleanup() { if [[ -n "$STAGE" && -d "$STAGE" ]]; then rm -rf -- "$STAGE"; fi; }
-trap cleanup EXIT INT TERM
+# EXIT tidies up; INT/TERM must also STOP. Trapping them to a handler that only
+# returns meant a Ctrl+C deleted the staging directory and then carried on
+# running against it, so the interrupt appeared to do nothing for another minute.
+on_signal() { cleanup; printf '\n%s[fp]%s interrupted; nothing further was installed.\n' "$C_BOLD" "$C_OFF" >&2; exit 130; }
+trap cleanup EXIT
+trap on_signal INT TERM
 
 usage() {
     cat <<EOF
 Usage: sudo $0 [--source auto|oem|upstream] [--deb PATH] [--tarball PATH]
-               [--force] [--keep-deb] [-h|--help]
+               [--force] [--keep-download] [-h|--help]
 
   --source MODE  Where to get the driver:
                    auto      OEM deb, falling back to the Broadcom tarball
@@ -117,7 +132,8 @@ Usage: sudo $0 [--source auto|oem|upstream] [--deb PATH] [--tarball PATH]
   --tarball PATH Install from an already-downloaded Broadcom tarball
                  (implies --source upstream).
   --force        Reinstall even if the matching driver is already in place.
-  --keep-deb     Keep the download in ${SCRIPT_DIR}/.cache instead of /tmp.
+  --keep-download  Keep the downloaded driver in ${CACHE_DIR} so a later
+                 run does not fetch it again (--keep-deb is the old name).
   -h, --help     Show this help.
 
 Fetches the Broadcom TOD fingerprint driver, verifies it against SHA256SUMS,
@@ -141,7 +157,7 @@ while [[ $# -gt 0 ]]; do
         --tarball)   TGZ_PATH="${2:-}"; [[ -n "$TGZ_PATH" ]] || die "--tarball needs a path"; shift 2 ;;
         --tarball=*) TGZ_PATH="${1#*=}"; shift ;;
         --force)     FORCE=1; shift ;;
-        --keep-deb)  KEEP_DEB=1; shift ;;
+        --keep-download|--keep-deb) KEEP_DEB=1; shift ;;
         -h|--help)   usage; exit 0 ;;
         *)           die "unknown argument: $1 (try --help)" ;;
     esac
@@ -167,16 +183,19 @@ preflight() {
     [[ "$arch" == "x86_64" ]] || die "this driver is amd64 only; got $arch."
 
     if [[ -r /etc/os-release ]]; then
-        # shellcheck disable=SC1091
-        . /etc/os-release
-        [[ "${ID:-}" == "ubuntu" || "${ID_LIKE:-}" == *ubuntu* ]] \
-            || warn "not Ubuntu (${ID:-unknown}); the TOD blob targets Ubuntu and may not load."
+        # Parsed, not sourced. Sourcing runs it as root, and this script is
+        # careful to parse its own state file for exactly that reason.
+        local os_id os_like
+        os_id="$(awk -F= '/^ID=/{gsub(/"/,"",$2); print $2; exit}' /etc/os-release)"
+        os_like="$(awk -F= '/^ID_LIKE=/{gsub(/"/,"",$2); print $2; exit}' /etc/os-release)"
+        [[ "$os_id" == "ubuntu" || "$os_like" == *ubuntu* ]] \
+            || warn "not Ubuntu (${os_id:-unknown}); the TOD blob targets Ubuntu and may not load."
     else
         warn "/etc/os-release missing; cannot confirm distribution."
     fi
 
     local tool
-    for tool in dpkg-deb tar udevadm systemctl sha256sum awk mktemp; do
+    for tool in dpkg-deb tar udevadm sha256sum awk mktemp; do
         command -v "$tool" >/dev/null 2>&1 || die "required tool not found: $tool"
     done
     # python3 only drives the firmware-settle helper, which the OEM payload
@@ -192,6 +211,14 @@ preflight() {
     python3 -c 'import gi' 2>/dev/null \
         || warn "python3-gi not importable; the firmware-settle step needs it. Install: sudo apt install python3-gi"
 
+    # The script installs the driver; fprintd is what enrols a finger. Without
+    # this the run ended by telling the user to type a command that a git-clone
+    # install never provides. The apt package pulls it in; a clone does not.
+    command -v fprintd-enroll >/dev/null 2>&1 \
+        || warn "fprintd is not installed, so you cannot enrol a finger yet. Install it with: sudo apt install fprintd libpam-fprintd"
+    command -v systemctl >/dev/null 2>&1 \
+        || warn "systemctl not found; fprintd will not be restarted here and will start on demand."
+
     [[ -r "$SUMS_FILE" ]] || die "checksum file missing: $SUMS_FILE"
 
     # Sensor presence is advisory, not fatal (an external dock may be detached).
@@ -199,8 +226,14 @@ preflight() {
         if lsusb 2>/dev/null | grep -qi "$SENSOR_ID"; then
             ok "Broadcom sensor $SENSOR_ID detected."
         else
-            warn "Broadcom sensor $SENSOR_ID not seen in lsusb; enrolment will fail until it is present."
+            warn "Broadcom sensor $SENSOR_ID was not found on this machine."
+            warn "This driver is only for that sensor. If your laptop has a different"
+            warn "fingerprint reader this will install but never work. Check with:  lsusb | grep ${SENSOR_ID}"
         fi
+    else
+        # Skipping this silently meant a machine with the wrong sensor got the
+        # driver with no warning at all.
+        warn "lsusb not found, so the sensor could not be checked. Install usbutils, then run:  lsusb | grep ${SENSOR_ID}"
     fi
     ok "Pre-flight passed."
 }
@@ -210,37 +243,69 @@ download() {
     local dest="$1"; shift
     local url
     for url in "$@"; do
-        log "Fetching ${url%%://*} from ${url#*://}" >&2
+        case "$url" in
+            https://dell.archive.canonical.com/*)
+                log "Downloading the driver from dell.archive.canonical.com (https first; this host usually times out, so a short wait here is expected)..." >&2 ;;
+            *) log "Downloading the driver from ${url#*://}" >&2 ;;
+        esac
+        # Written to .part and renamed on success, so an interrupted fetch can
+        # never leave a truncated file sitting at the canonical cache path.
         if command -v curl >/dev/null 2>&1; then
-            curl -fSL --connect-timeout 15 --max-time 300 -o "$dest" "$url" && return 0
+            curl -fsSL --connect-timeout 5 --max-time 300 -o "${dest}.part" "$url" \
+                && mv -f -- "${dest}.part" "$dest" && return 0
         else
-            wget -q --timeout=300 -O "$dest" "$url" && return 0
+            wget -q --timeout=300 -O "${dest}.part" "$url" \
+                && mv -f -- "${dest}.part" "$dest" && return 0
         fi
-        warn "fetch failed from ${url%%://*}; trying next."
+        rm -f -- "${dest}.part"
+        warn "that address did not work; trying the next one."
     done
     return 1
 }
 
 # ── Verify a downloaded artefact against its pinned checksum ─────────────────
+pinned_sha() { awk -v n="$1" '$2==n || $2=="*"n {print $1}' "$SUMS_FILE"; }
+
+# Returns non-zero on a mismatch. It does NOT die on a missing pin, because the
+# cache-reuse probe calls it with stderr closed: a die() in there exited the
+# script with no message at all, which is the opposite of failing loud.
 verify_file() {
     local f="$1" name="$2" expected actual
-    expected="$(awk -v n="$name" '$2==n || $2=="*"n {print $1}' "$SUMS_FILE")"
-    [[ -n "$expected" ]] || die "no pinned checksum for $name in $SUMS_FILE"
+    expected="$(pinned_sha "$name")"
+    [[ -n "$expected" ]] || return 1
     actual="$(sha256sum -- "$f" | awk '{print $1}')"
     [[ "$actual" == "$expected" ]]
 }
 
+# Called before any fetch, so a missing pin fails loudly and early rather than
+# looking like a download problem later.
+require_pin() {
+    [[ -n "$(pinned_sha "$1")" ]] || die "no pinned checksum for $1 in ${SUMS_FILE}. The file is part of this package; reinstall it."
+}
+
+# Keeping the download used to mean writing 6.2 MB of proprietary artefact into
+# SCRIPT_DIR, which under the package is /usr/libexec/<pkg>: a dpkg-owned
+# directory, unowned by any package, never cleaned by apt remove, and on a tree
+# the FHS reserves for read-only static data. From a git clone it landed in the
+# working tree instead, where .gitignore did not cover it.
 download_dir() {
-    if [[ $KEEP_DEB -eq 1 ]]; then printf '%s' "${SCRIPT_DIR}/.cache"; else printf '%s' "$STAGE"; fi
+    if [[ $KEEP_DEB -eq 1 ]]; then printf '%s' "$CACHE_DIR"; else printf '%s' "$STAGE"; fi
 }
 
 # ── Obtain from the OEM deb. Returns 1 only if it cannot be downloaded; a ────
 #    checksum mismatch is fatal (a tamper/corruption signal, never a fallback).
 get_oem() {
+    require_pin "$DEB_NAME"
     local deb
     if [[ -n "$DEB_PATH" ]]; then
         [[ -r "$DEB_PATH" ]] || die "deb not readable: $DEB_PATH"
-        deb="$DEB_PATH"; log "Using supplied deb: $deb"
+        # Copied into staging BEFORE it is verified, then only the copy is used.
+        # Verifying the caller's path and then re-opening it leaves a window in
+        # which the file can be swapped, and SOURCES tells users to pass a path
+        # out of their own downloads directory.
+        log "Using supplied deb: $DEB_PATH"
+        deb="${STAGE}/${DEB_NAME}"
+        cp -- "$DEB_PATH" "$deb" || die "could not read $DEB_PATH"
     else
         local dir; dir="$(download_dir)"; mkdir -p -- "$dir"
         deb="${dir}/${DEB_NAME}"
@@ -260,10 +325,13 @@ get_oem() {
 # ── Obtain from the Broadcom upstream tarball, normalised to the same layout ─
 #    install_trees expects. Returns 1 only if it cannot be downloaded.
 get_upstream() {
+    require_pin "$TGZ_NAME"
     local tgz
     if [[ -n "$TGZ_PATH" ]]; then
         [[ -r "$TGZ_PATH" ]] || die "tarball not readable: $TGZ_PATH"
-        tgz="$TGZ_PATH"; log "Using supplied tarball: $tgz"
+        log "Using supplied tarball: $TGZ_PATH"
+        tgz="${STAGE}/${TGZ_NAME}"
+        cp -- "$TGZ_PATH" "$tgz" || die "could not read $TGZ_PATH"
     else
         local dir; dir="$(download_dir)"; mkdir -p -- "$dir"
         tgz="${dir}/${TGZ_NAME}"
@@ -286,6 +354,14 @@ get_upstream() {
     # paths (and so backup/uninstall) match the OEM deb exactly.
     [[ -d "${root}/usr" ]] && cp -a -- "${root}/usr" "${STAGE}/extract/"
     [[ -d "${root}/var" ]] && cp -a -- "${root}/var" "${STAGE}/extract/"
+    # Broadcom's agreement asks that the software be distributed with a copy of
+    # it, and both upstreams ship one. Neither was ever laid down, so the end
+    # state was a machine carrying the blob with none of its terms on it. The
+    # tarball calls it LICENCE.broadcom; normalise it to where the deb puts it.
+    if [[ -f "${root}/LICENCE.broadcom" ]]; then
+        mkdir -p -- "${STAGE}/extract/usr/share/doc/libfprint-2-tod1-broadcom"
+        cp -a -- "${root}/LICENCE.broadcom" "${STAGE}/extract/usr/share/doc/libfprint-2-tod1-broadcom/copyright"
+    fi
     if [[ -d "${root}/lib/udev/rules.d" ]]; then
         mkdir -p -- "${STAGE}/extract/usr/lib/udev/rules.d"
         cp -a -- "${root}/lib/udev/rules.d/." "${STAGE}/extract/usr/lib/udev/rules.d/"
@@ -305,11 +381,11 @@ obtain_payload() {
     mkdir -p -- "${STAGE}/extract"
     case "$SOURCE" in
         oem)
-            get_oem || die "could not download the OEM deb. See SOURCES for manual options."
+            get_oem || die "could not download the driver from Canonical. Check your internet connection and try again. To install from a file you downloaded yourself, see: https://github.com/elementmerc/latitude-fingerprint/blob/main/SOURCES"
             USED_SOURCE="oem"
             ;;
         upstream)
-            get_upstream || die "could not download the Broadcom upstream tarball. See SOURCES."
+            get_upstream || die "could not download the driver from Broadcom. Check your internet connection and try again. To install from a file you downloaded yourself, see: https://github.com/elementmerc/latitude-fingerprint/blob/main/SOURCES"
             USED_SOURCE="upstream"
             ;;
         auto)
@@ -317,7 +393,7 @@ obtain_payload() {
                 USED_SOURCE="oem"
             else
                 warn "OEM source unreachable; falling back to the Broadcom upstream tarball (see SOURCES)."
-                get_upstream || die "neither the OEM deb nor the Broadcom upstream is reachable. See SOURCES."
+                get_upstream || die "could not download the driver from either Canonical or Broadcom. Check your internet connection and try again. To install from a file you downloaded yourself, see: https://github.com/elementmerc/latitude-fingerprint/blob/main/SOURCES"
                 USED_SOURCE="upstream"
             fi
             ;;
@@ -338,15 +414,29 @@ report_source() {
     esac
 }
 
-# ── Idempotency short-circuit: is the staged .so already installed? ──────────
-already_installed() {
-    [[ -r "$DRIVER_SO" ]] || return 1
-    local staged_so="${STAGE}/extract/${TREES[0]}"
-    [[ -r "$staged_so" ]] || return 1
-    local a b
-    a="$(sha256sum -- "$DRIVER_SO" | awk '{print $1}')"
-    b="$(sha256sum -- "$staged_so" | awk '{print $1}')"
-    [[ "$a" == "$b" ]]
+# ── Idempotency short-circuit ───────────────────────────────────────────────
+#
+# "Installed" means the WHOLE payload is in place, not just the driver. Checking
+# the .so alone declared victory over a half-laid install: the lay-down is not
+# atomic, so an interrupted run leaves the .so (tar writes it first) without the
+# udev rule, the firmware, or the helper, and a re-run then reported "nothing to
+# do" over a driver that could not work. The package's own documented repair,
+# `apt install --reinstall`, runs this script with no --force and so hit the
+# same short-circuit, which made the repair path a no-op.
+#
+# It also runs BEFORE any download now. It used to run after, so every upgrade
+# and every --reinstall re-fetched 6.2 MB, and doing that with no network left
+# the package half-configured and blocked everything queued behind it in apt.
+payload_complete() {
+    driver_is_ours || return 1
+    local tree
+    for tree in "${TREES[@]}"; do
+        # The upstream tarball ships no firmware-settle helper, so that tree is
+        # only required when the source that provides it was used.
+        [[ "$tree" == "usr/libexec/libfprint-2-tod1-broadcom" ]] && continue
+        [[ -e "/${tree}" ]] || return 1
+    done
+    return 0
 }
 
 # Is the driver currently on disk one this tool installed?
@@ -382,7 +472,21 @@ backup_existing() {
     # ever there because a driver install put it there.
     if driver_is_ours; then
         log "Driver already in place from an earlier install by this tool; nothing of yours to back up."
-        write_state "none"
+        # Recording "none" here used to throw away the machine's only recoverable
+        # state: a pre-marker install may have left the user's genuine originals
+        # in the OLDEST backup, which uninstall.sh knows how to find while no
+        # marker exists. Writing the marker takes that fallback away, so adopt
+        # that backup rather than discarding the pointer to it.
+        local oldest=""
+        if [[ -d "$BACKUP_ROOT" ]]; then
+            oldest="$(find "$BACKUP_ROOT" -mindepth 1 -maxdepth 1 -type d -not -name '*.restored' 2>/dev/null | sort | head -n1)"
+        fi
+        if [[ -n "$oldest" && -f "${oldest}/manifest.txt" ]]; then
+            log "Keeping the earlier backup record at ${oldest}."
+            write_state "$oldest"
+        else
+            write_state "none"
+        fi
         return 0
     fi
 
@@ -423,6 +527,8 @@ write_state() {
         printf '# latitude-fingerprint install state. Managed by install.sh; do not edit.\n'
         printf 'owned_since=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
         printf 'backup_dir=%s\n' "$backup_dir"
+        printf 'source=%s\n' "${USED_SOURCE:-unknown}"
+        printf 'driver_sha256=%s\n' "$(sha256sum -- "${STAGE}/extract/${TREES[0]}" 2>/dev/null | awk '{print $1}')"
     } >"$tmp"
     chmod 644 -- "$tmp"
     mv -f -- "$tmp" "$STATE_FILE"
@@ -445,18 +551,33 @@ install_trees() {
 }
 
 main() {
+    # One run at a time. A manual run racing the postinst interleaved two tar
+    # streams into / and two marker writes, and the loser could record a backup
+    # taken after the winner had already laid our driver.
+    mkdir -p -- "$(dirname -- "$LOCK_FILE")" 2>/dev/null || true
+    exec 9>"$LOCK_FILE" 2>/dev/null || true
+    if ! flock -w 300 9 2>/dev/null; then
+        die "another install or uninstall is already running (waited 5 minutes)."
+    fi
+
     preflight
+
+    # Before the network, not after. An unattended re-run on a healthy machine
+    # now touches nothing: no download, and so no chance of a momentary outage
+    # at one host quietly swapping the hardware-verified build for the other one.
+    # An explicitly named source is always honoured, because a user who typed
+    # --source upstream means it.
+    if [[ $FORCE -eq 0 && "$SOURCE" == "auto" && -z "$DEB_PATH" && -z "$TGZ_PATH" ]] && payload_complete; then
+        ok "Driver already fully installed; nothing to do (use --force to reinstall)."
+        exit 0
+    fi
 
     STAGE="$(mktemp -d -t latitude-fp.XXXXXX)" || die "cannot create staging dir"
     obtain_payload
 
-    if already_installed && [[ $FORCE -eq 0 ]]; then
-        ok "Matching driver already installed; nothing to do (use --force to reinstall)."
-        exit 0
-    fi
-
     backup_existing
     install_trees
+    DIAGNOSTICS=1
 
     log "Reloading udev rules..."
     # shellcheck disable=SC2015  # warn on either failing is the intent, not if-then-else
@@ -465,9 +586,14 @@ main() {
     log "Restarting fprintd..."
     systemctl restart fprintd 2>/dev/null || warn "could not restart fprintd via systemctl; it is D-Bus activated and will start on demand."
 
-    if [[ -x "$FW_UPDATER" ]] && command -v python3 >/dev/null 2>&1; then
+    # The STAGED helper, never the installed one. FW_UPDATER is a system path,
+    # and the upstream tarball ships no helper at all, so running the installed
+    # copy meant a stale file left by an earlier install was executed as root on
+    # a path where nothing had verified it.
+    local staged_fw="${STAGE}/extract/${FW_UPDATER#/}"
+    if [[ -f "$staged_fw" ]] && command -v python3 >/dev/null 2>&1; then
         log "Settling sensor firmware (update-fw.py)..."
-        python3 "$FW_UPDATER" || warn "firmware-settle step returned non-zero; the driver usually finishes this in the background."
+        python3 "$staged_fw" || warn "firmware-settle step returned non-zero; the driver usually finishes this in the background."
     else
         log "No firmware-settle helper for this source; the driver settles firmware on first sensor access."
     fi
@@ -479,8 +605,11 @@ main() {
 
     ok "Done. Enrol a finger with:  fprintd-enroll \"\$USER\""
     log "Then test with:  fprintd-verify"
-    warn "First install on this machine flashes the sensor firmware. If enrol reports"
-    warn "'No such device', reboot once (the sensor re-enumerates after a flash) and retry."
+    if [[ "$USED_SOURCE" == "oem" ]]; then
+        warn "The first install on a machine updates the firmware inside the sensor. That"
+        warn "is a one-way change and uninstalling does not undo it. If enrol reports"
+        warn "'No such device', reboot once (the sensor re-enumerates after a flash) and retry."
+    fi
 }
 
 main "$@"
