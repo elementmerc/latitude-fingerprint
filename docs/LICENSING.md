@@ -20,8 +20,8 @@ There are two places it can come from, and they are not interchangeable:
 
 | Source | When it is used | Whose terms you accept |
 |---|---|---|
-| Canonical's archive (`dell.archive.canonical.com`) | Always, unless it cannot be reached | Broadcom's, via the build Canonical packages and ships |
-| Broadcom's own download (`packages.broadcom.com`) | Only when Canonical's copy cannot be downloaded | Broadcom's, accepted directly from Broadcom |
+| Canonical's archive (`dell.archive.canonical.com`) | The default, and whenever `--source oem` is given | Broadcom's, via the build Canonical packages and ships |
+| Broadcom's own download (`packages.broadcom.com`) | When Canonical's copy cannot be downloaded, or whenever `--source upstream` is given | Broadcom's, accepted directly from Broadcom |
 
 Both carry the same driver version, `5.15.285-5.15.010.0`, and each has its own
 pinned SHA256 in `SHA256SUMS`. They are not the same bytes: Canonical rebuilds
@@ -31,7 +31,16 @@ does not leave you with a fingerprint reader that cannot work at all. When it is
 used, the installer says so on screen rather than quietly swapping one build for
 another.
 
-## Why this is allowed (mere aggregation)
+## Why this is allowed
+
+Two separate questions hide behind that heading, and they have different answers
+from different people. The first is whether our own freely licensed packaging is
+dragged under the proprietary licence, or the blob under ours, by sitting next to
+each other. The second is whether Broadcom permits what actually happens. Both
+are answered below. Neither is legal advice: this is the reasoning the project
+works from, and a solicitor's reading would govern over ours.
+
+### Our licence, and theirs (mere aggregation)
 
 Think of it like a recipe that tells you which tin to buy and how to open it.
 The recipe is ours and is freely licensed. The tin is the shop's, sealed, and
@@ -52,13 +61,22 @@ precedent deliberately.
 ## What this means for you
 
 - **Installing:** you fetch the proprietary driver yourself (our script does it
-  for you, on your machine, from Canonical). You accept Broadcom's licence by
-  using it, exactly as you would installing it from Canonical directly.
+  for you, on your machine, from whichever of the two sources above is reachable).
+  You accept Broadcom's licence by using it, exactly as you would installing it
+  from Canonical directly.
 - **Redistributing our work:** the scripts, packaging, and docs are
   AGPL-3.0-or-later. You may share and modify them under those terms.
-- **Redistributing the driver:** that is governed solely by Broadcom's
-  licence, not ours. We take no position beyond "we never do it, and our tools
-  never do it for you".
+- **Redistributing the driver:** that is governed solely by Broadcom's licence,
+  not ours. For the record, that licence does permit it, complete and unmodified,
+  with a copy of the agreement alongside and for use with the Broadcom hardware
+  the driver was written for. This project simply does not take those conditions
+  on: we never redistribute it, and our tools never do it for you.
+- **Two conditions worth knowing before you install:** the grant covers use with
+  the Broadcom silicon the driver was built for, so it does not cover a machine
+  with a different fingerprint sensor, and the agreement carries United States
+  export restrictions naming specific countries. The full terms are installed on
+  your machine alongside the driver, at
+  `/usr/share/doc/libfprint-2-tod1-broadcom/copyright`.
 
 ## Provenance
 

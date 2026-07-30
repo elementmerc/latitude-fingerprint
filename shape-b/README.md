@@ -25,7 +25,8 @@ apt install libfprint-2-tod1-broadcom-installer
   postinst runs install.sh
         |
         +--> download driver from Canonical
-        +--> verify pinned SHA256   (mismatch or failure => install aborts)
+        |      (if unreachable: from Broadcom's own download instead)
+        +--> verify pinned SHA256   (mismatch => install aborts, no fallback)
         +--> lay driver, udev rule, firmware updater, firmware into the system
 ```
 

@@ -41,8 +41,9 @@ SHA256:    67dc8dd47a58e0f9005a42b9bb7048345831257bfd28f34ddd0db1ef07a0e9bc
 
 #   https://packages.broadcom.com/artifactory/dell-controlvault-drivers/brcm_linux_fp_5.15.285_5.15.010.0.tgz
 #
-# The tarball lays the same driver .so, udev rule, and firmware as the deb, but
-# it carries no firmware-settle helper (update-fw.py). Broadcom's own installer
+# The tarball provides the same SET of files as the deb (driver .so, udev rule,
+# firmware), though the .so itself is a different build, as the hashes above
+# show. It carries no firmware-settle helper (update-fw.py). Broadcom's own installer
 # notes that firmware "will be automatically verified on device access", so the
 # driver settles its firmware on first use; the deb's proactive step is a
 # Canonical packaging addition, not a requirement.
@@ -50,7 +51,9 @@ SHA256:    67dc8dd47a58e0f9005a42b9bb7048345831257bfd28f34ddd0db1ef07a0e9bc
 # ── Manual install when the network is awkward ──────────────────────────────
 #   OEM deb:   sudo ./install.sh --deb /path/to/the.deb
 #   Upstream:  sudo ./install.sh --tarball /path/to/brcm_linux_fp_*.tgz
-#   Verify first:  sha256sum -c SHA256SUMS   (run from this directory)
+#   Verify first, naming the file you actually downloaded, since SHA256SUMS
+#   lists both and checking for the one you do not have reports a failure:
+#     sha256sum --ignore-missing -c SHA256SUMS
 
 # Robustness upgrade (deferred): the authoritative SHA256 for the OEM deb is
 # also carried in Canonical's GPG-signed Packages index for the OEM pocket. A

@@ -67,7 +67,7 @@ Canonical was already permitted to distribute it, and it was sitting in their
 archive. The catch was that it had only ever been wired up for Ubuntu 22.04, in
 a special OEM channel meant for that release. There was even someone on it: a
 Canonical engineer, Yao Wei, had been packaging the driver. The public bug
-thread had gone quiet since March 2025, though his packaging work carried on in
+thread had been quiet since March 2025, though his packaging work carried on in
 his own archive; it just hadn't reached Ubuntu's normal archive, and it didn't
 cover the newest release, 26.04, which happens to be what I run. So I decided to
 take matters into my own hands. What could possibly go wrong?
@@ -79,10 +79,11 @@ background in computer science and security had me thinking about the things
 that matter: the specification, a mental model of how it should all behave, how
 it copes when things go wrong, and testing. The actual coding was mostly
 Claude's. What we built is a delivery mechanism. It does not contain the driver;
-it fetches Dell's driver from Canonical's OEM archive, checks it against a known
-checksum so you know it hasn't been tampered with, and installs it cleanly. The
-driver only ever travels from Canonical to you. We never bundle it or re-host
-it.
+it fetches Broadcom's driver, checks it against a checksum recorded in the
+project so you can see it arrived intact, and installs it cleanly. It comes from
+Canonical's OEM archive, or from Broadcom's own download if Canonical's copy
+can't be reached. Either way it travels straight from them to you. We never
+bundle it or re-host it.
 
 We both made mistakes. The first time the agent pushed to the repository, it
 included some internal working files and build artefacts that had no business
@@ -90,9 +91,11 @@ being public. That one is on me too: I should have reviewed what was going out
 before it went out. And while the very first install worked and my sensor
 sprang to life, I nearly didn't test hard enough to know whether it would hold
 up on other Latitudes running other versions of Ubuntu. I came close to shipping
-something that worked only on my desk. Docker saved me there: I installed the
-package in throwaway containers on clean 24.04 and 26.04 systems and confirmed
-the whole chain held up before trusting it.
+something that worked only on my desk. Docker helped there: throwaway containers
+on clean 24.04 and 26.04 confirmed the packaging, the download, the checksum, the
+install and the removal all behave on a machine that isn't mine. What a container
+can't do is touch a sensor, so the enrolment half is still only proven on my own
+laptop.
 
 ## Try it
 
@@ -116,6 +119,13 @@ The first install flashes the sensor's firmware, which makes it reset on the USB
 bus. If that first enrol says "No such device", reboot once and run it again; it
 won't re-flash, and enrolment then works normally.
 
+One good thing came of posting on the bug: Yao Wei replied. He confirmed 5.15.285
+is the newest build Broadcom has put out, explained he can't promise future ones
+for 26.04 and beyond, and pointed me at the packaging's `debian/watch` file. That
+pointer is why the project now knows about Broadcom's own download and uses it as
+a second source when Canonical's copy is unreachable. He also said he'd chase the
+uploaders about getting it into the archive properly, which is where it belongs.
+
 The source, the packaging, and prebuilt downloads live on
 [GitHub](https://github.com/elementmerc/latitude-fingerprint). I've also left a
 note on the [Launchpad bug](https://bugs.launchpad.net/ubuntu/+bug/2099655),
@@ -125,8 +135,8 @@ third to complain.)
 
 ## Lessons learned
 
-So a grand total of three people on a bug thread share the problem I've now
-solved, and honestly, it was worth it. I learned how drivers reach your machine,
+So a grand total of three people on a bug thread share the problem I've now got
+a package for, and honestly, it was worth it. I learned how drivers reach your machine,
 I got to make something small that helps the open-source community, and I came
 out the other side a bit better at thinking about whole systems rather than just
 the code in front of me. Catch you in the next one. Till then, cheers.
