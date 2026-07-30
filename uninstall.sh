@@ -12,6 +12,7 @@ readonly TREES=(
     "usr/lib/udev/rules.d/60-libfprint-2-device-broadcom.rules"
     "usr/libexec/libfprint-2-tod1-broadcom"
     "var/lib/fprint/fw"
+    "usr/share/doc/libfprint-2-tod1-broadcom"
 )
 readonly BACKUP_ROOT="/var/backups/latitude-fingerprint"
 readonly STATE_DIR="/var/lib/latitude-fingerprint"
@@ -33,6 +34,17 @@ is_known_driver() {
         [[ "$actual" == "$known" ]] && return 0
     done
     return 1
+}
+
+# Does this backup hold OUR install rather than anything of the user's?
+#
+# Deciding entry by entry could only ever work for the driver .so: the udev rule
+# hashes to something else and the other two trees are directories, so a
+# per-entry check skipped one tree out of four and restored the firmware blobs,
+# key.pem and the helper. The driver decides for the whole snapshot, because the
+# other three trees are only ever on disk because a driver install put them there.
+backup_is_ours() {
+    is_known_driver "${1}/${TREES[0]}"
 }
 
 if [[ -t 1 ]]; then
@@ -98,11 +110,22 @@ if [[ $RESTORE -eq 1 ]]; then
             # every later one was taken with our driver already in place. Taking
             # the most recent instead is what used to restore our own driver and
             # leave it installed after a removal.
-            BACKUP_DIR="$(find "$BACKUP_ROOT" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort | head -n1)"
+            BACKUP_DIR="$(find "$BACKUP_ROOT" -mindepth 1 -maxdepth 1 -type d -not -name '*.restored' 2>/dev/null | sort | head -n1)"
             if [[ -n "$BACKUP_DIR" ]]; then
                 warn "No install marker (installed by an older version); restoring the oldest backup, ${BACKUP_DIR}."
             fi
         fi
+    fi
+    if [[ -n "$BACKUP_DIR" && ! -f "${BACKUP_DIR}/manifest.txt" ]]; then
+        # Silence here read as "clean removal", which is indistinguishable from
+        # having restored the user's files. If a recorded backup has gone, say so.
+        warn "the recorded backup at ${BACKUP_DIR} is missing or unreadable, so nothing was put back."
+        warn "If you had files at those paths before installing, look for them under ${BACKUP_ROOT}."
+        BACKUP_DIR=""
+    fi
+    if [[ -n "$BACKUP_DIR" ]] && backup_is_ours "$BACKUP_DIR"; then
+        log "That backup is a snapshot of this tool's own driver, not your files; leaving it alone."
+        BACKUP_DIR=""
     fi
     if [[ -n "$BACKUP_DIR" && -f "${BACKUP_DIR}/manifest.txt" ]]; then
         log "Restoring originals from ${BACKUP_DIR}..."
@@ -131,6 +154,11 @@ if [[ $RESTORE -eq 1 ]]; then
             log "restored /${tree}"
         done < "${BACKUP_DIR}/manifest.txt"
         ok "Restore complete."
+        # Consumed. Without this, a later uninstall on a machine with no marker
+        # (which is what a completed uninstall leaves behind) finds this same
+        # snapshot again and puts stale files back over whatever is there now.
+        mv -- "$BACKUP_DIR" "${BACKUP_DIR}.restored" 2>/dev/null \
+            || warn "could not mark ${BACKUP_DIR} as restored; it may be applied again by a later uninstall."
     else
         log "No backup to restore (clean removal)."
     fi
@@ -140,8 +168,15 @@ fi
 # half way leaves the marker in place and a re-run still knows the backup this
 # machine belongs to.
 if [[ -f "$STATE_FILE" ]]; then
-    rm -f -- "$STATE_FILE"
-    rmdir -- "$STATE_DIR" 2>/dev/null || true
+    if [[ $RESTORE -eq 0 ]]; then
+        # --no-restore leaves the backup in place, so clearing the marker would
+        # discard the only record of which backup holds the user's originals.
+        warn "keeping the install record at ${STATE_FILE} because --no-restore was used;"
+        warn "run this again without --no-restore to put your original files back."
+    else
+        rm -f -- "$STATE_FILE"
+        rmdir -- "$STATE_DIR" 2>/dev/null || true
+    fi
 fi
 
 log "Reloading udev rules..."
@@ -152,3 +187,8 @@ log "Restarting fprintd..."
 systemctl restart fprintd 2>/dev/null || warn "could not restart fprintd; it is D-Bus activated and will start on demand."
 
 ok "Uninstall complete."
+if command -v pam-auth-update >/dev/null 2>&1; then
+    log "If you turned on fingerprint login, turn it off now with:  sudo pam-auth-update"
+    log "(untick 'Fingerprint authentication', or logging in will wait for a sensor that no longer works)"
+fi
+log "Your enrolled fingerprints are still on this machine. To delete them:  fprintd-delete \"\$USER\""
