@@ -17,16 +17,19 @@ REPO_ROOT="$(cd -- "${SHAPE_B_DIR}/.." >/dev/null 2>&1 && pwd)"
 readonly REPO_ROOT
 readonly PKG="libfprint-2-tod1-broadcom-installer"
 
-# The package version tracks the project's release, read from the newest
-# CHANGELOG heading rather than hardcoded here. Hardcoding it is what left both
-# published PPA builds on 0.1.0 while the git tags moved on, so the version a
-# user quotes from `apt policy` identified nothing. Deriving it also means the
-# CHANGELOG entry must exist before anything can be uploaded.
+# The version comes from debian/changelog, which is where a Debian package's
+# version actually lives and the only file that keeps its history. It used to be
+# hardcoded here, which left both published builds on 0.1.0 while the git tags
+# moved on; deriving it from the user-facing CHANGELOG.md instead just moved the
+# problem, because that file has no place to record a packaging-only re-upload.
+#
+# The base version is the part before the ~suite suffix, so `0.3.0~24.04.1` in
+# the changelog yields `0.3.0` and the suffix is rebuilt per suite below.
 read_base_version() {
-    local v
-    v="$(grep -m1 -oE '^## v[0-9]+\.[0-9]+\.[0-9]+' "${REPO_ROOT}/CHANGELOG.md" 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || true)"
-    [[ -n "$v" ]] || die "cannot read a version from the newest CHANGELOG.md heading (expected '## vX.Y.Z ...')"
-    printf '%s' "$v"
+    local full
+    full="$(cd -- "$SHAPE_B_DIR" && dpkg-parsechangelog --show-field Version 2>/dev/null || true)"
+    [[ -n "$full" ]] || die "cannot read a version from debian/changelog"
+    printf '%s' "${full%%\~*}"
 }
 
 # Files single-sourced from the repository root into the build tree.
@@ -36,9 +39,11 @@ die() { printf 'build-source: error: %s\n' "$*" >&2; exit 1; }
 
 usage() {
     cat <<EOF
-Usage: $0 <suite>
+Usage: $0 <suite> [revision]
 
-  <suite>   noble (24.04 LTS) or resolute (26.04 LTS)
+  <suite>     noble (24.04 LTS) or resolute (26.04 LTS)
+  [revision]  packaging revision within this release, default 1. Bump it to
+              re-upload a packaging-only fix without inventing a new release.
 
 Produces an unsigned source package under ${SHAPE_B_DIR}/build/<suite>/.
 Next steps after this script:
@@ -47,9 +52,11 @@ Next steps after this script:
 EOF
 }
 
-[[ $# -eq 1 ]] || { usage; exit 1; }
+[[ $# -ge 1 && $# -le 2 ]] || { usage; exit 1; }
 case "$1" in -h|--help) usage; exit 0 ;; esac
 readonly SUITE="$1"
+readonly REVISION="${2:-1}"
+[[ "$REVISION" =~ ^[0-9]+$ ]] || die "revision must be a number, got '$REVISION'"
 
 # Map each supported suite to its Ubuntu release number for the version string.
 case "$SUITE" in
@@ -59,7 +66,7 @@ case "$SUITE" in
 esac
 BASE_VERSION="$(read_base_version)" || exit 1
 readonly BASE_VERSION
-readonly VERSION="${BASE_VERSION}~${SERIES}.1"
+readonly VERSION="${BASE_VERSION}~${SERIES}.${REVISION}"
 
 # Pre-flight: the single-source files and the packaging must be present.
 for f in "${PAYLOAD[@]}"; do
@@ -68,11 +75,14 @@ done
 [[ -d "${SHAPE_B_DIR}/debian" ]] || die "missing debian/ tree in ${SHAPE_B_DIR}"
 command -v dpkg-buildpackage >/dev/null 2>&1 || die "dpkg-buildpackage not found (apt install dpkg-dev)"
 
-# Only the first line of debian/changelog gets stamped below, so the body is the
-# half that silently goes stale. A body still describing the first release on a
-# later version is the drift this refuses to upload.
-if [[ "$BASE_VERSION" != "0.1.0" ]] && grep -qi 'Initial release' "${SHAPE_B_DIR}/debian/changelog"; then
-    die "debian/changelog still reads 'Initial release' while building ${BASE_VERSION}; update the entry body first."
+# The release notes a user reads and the package a user installs should describe
+# the same release. This does not block a build, because the packaging often has
+# to be built and tested before the notes are written, but an upload without them
+# is how a version reaches people with nothing explaining what changed.
+if ! grep -q "^## v${BASE_VERSION}\b" "${REPO_ROOT}/CHANGELOG.md" 2>/dev/null; then
+    printf 'build-source: WARNING: CHANGELOG.md has no "## v%s" entry.\n' "$BASE_VERSION" >&2
+    printf 'build-source: WARNING: build it for testing if you like, but do not upload it\n' >&2
+    printf 'build-source: WARNING: until the release notes for %s exist.\n' "$BASE_VERSION" >&2
 fi
 
 readonly BUILD_DIR="${SHAPE_B_DIR}/build/${SUITE}"

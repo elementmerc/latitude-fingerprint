@@ -1,10 +1,24 @@
-libfprint-2-tod1-broadcom-installer (0.2.0~24.04.1) noble; urgency=medium
+libfprint-2-tod1-broadcom-installer (0.3.0~24.04.1) noble; urgency=medium
 
-  * Fetches the Broadcom BCM58200 ControlVault 3 fingerprint TOD driver from
-    Canonical's archive, verifies it against a pinned SHA256, and installs it on
-    Ubuntu releases newer than 22.04. The proprietary driver is never
-    redistributed by this package. (LP: #2099655)
-  * Removal takes the driver back out even when the installer has been run more
-    than once.
+  * Removal now takes the driver back out even when the installer has been run
+    more than once. Previously a repeat install recorded the driver as though it
+    were a file of yours, and removing the package put it straight back while
+    reporting success.
+  * Broadcom's own download is used as a second source when Canonical's copy
+    cannot be reached. Both are pinned to a checksum, and the installer says
+    which one it used.
+  * Re-running the installer now repairs a partly-installed driver instead of
+    reporting that there is nothing to do, and it no longer downloads anything
+    when the driver is already fully in place.
+  * The proprietary licence is installed alongside the driver.
+
+ -- Daniel Iwugo <daniel@themalwarefiles.com>  Thu, 30 Jul 2026 14:00:00 +0100
+
+libfprint-2-tod1-broadcom-installer (0.1.0~24.04.1) noble; urgency=medium
+
+  * Initial release. Fetches the Broadcom BCM58200 ControlVault 3 fingerprint
+    TOD driver from Canonical's archive, verifies it against a pinned SHA256,
+    and installs it on Ubuntu releases newer than 22.04. The proprietary driver
+    is never redistributed by this package. (LP: #2099655)
 
  -- Daniel Iwugo <daniel@themalwarefiles.com>  Sun, 31 May 2026 20:57:23 +0100
