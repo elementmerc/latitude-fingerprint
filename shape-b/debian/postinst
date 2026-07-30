@@ -11,7 +11,8 @@ case "$1" in
             if ! "$LIBEXEC/install.sh"; then
                 echo "" >&2
                 echo "The fingerprint driver could not be installed. The most likely cause" >&2
-                echo "is that the driver could not be downloaded from Canonical's archive." >&2
+                echo "is that neither source could be reached: Canonical's archive, nor the" >&2
+                echo "Broadcom upstream tarball it falls back to." >&2
                 echo "Once the network is reachable, retry with:" >&2
                 echo "  sudo apt install --reinstall libfprint-2-tod1-broadcom-installer" >&2
                 echo "or run the installer directly:" >&2
