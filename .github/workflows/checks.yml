@@ -18,6 +18,10 @@ jobs:
       # Pinned by commit, not by tag: a tag can be moved to point at different
       # code after review.
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          # The job does not push, and leaving the token in .git/config means a
+          # later step (or a linter fetched at run time) can read it.
+          persist-credentials: false
 
       # Every shell script carries an SPDX-License-Identifier in its first ten
       # lines. Markdown, YAML and packaging metadata live under the repo LICENSE.
@@ -41,6 +45,10 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          # The job does not push, and leaving the token in .git/config means a
+          # later step (or a linter fetched at run time) can read it.
+          persist-credentials: false
 
       # This project is almost entirely shell, and the shell IS the product: it
       # runs as root on a stranger's laptop and lays a driver into /. Linting it
@@ -58,5 +66,7 @@ jobs:
           shellcheck --version
           # shellcheck's own exit status is the gate; xargs -r guards the
           # nothing-to-lint case rather than passing an empty argument list.
-          git ls-files '*.sh' | xargs -r shellcheck --severity=style --format=gcc
+          # -z / -0: git C-escapes names with spaces or quotes, so a plain
+          # pipeline would mangle them and silently skip the file.
+          git ls-files -z '*.sh' | xargs -0 -r shellcheck --severity=style --format=gcc
           echo "No shellcheck findings."
