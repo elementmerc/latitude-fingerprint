@@ -85,7 +85,11 @@ die() {
 
 # ── Temp staging with guaranteed cleanup ────────────────────────────────────
 STAGE=""
-cleanup() { [[ -n "$STAGE" && -d "$STAGE" ]] && rm -rf -- "$STAGE"; }
+# Must return 0 on the normal path. Under `set -e`, a trap whose last command
+# fails overrides the script's own exit status, so the "&& rm" form made
+# `install.sh --help` exit 1: STAGE is still empty that early, the test fails,
+# and the trap's failure becomes the script's.
+cleanup() { if [[ -n "$STAGE" && -d "$STAGE" ]]; then rm -rf -- "$STAGE"; fi; }
 trap cleanup EXIT INT TERM
 
 usage() {
@@ -161,9 +165,14 @@ preflight() {
     fi
 
     local tool
-    for tool in dpkg-deb tar udevadm systemctl python3 sha256sum install; do
+    for tool in dpkg-deb tar udevadm systemctl sha256sum awk mktemp; do
         command -v "$tool" >/dev/null 2>&1 || die "required tool not found: $tool"
     done
+    # python3 only drives the firmware-settle helper, which the OEM payload
+    # carries and the upstream tarball does not, so a missing interpreter
+    # degrades that one step rather than blocking the install.
+    command -v python3 >/dev/null 2>&1 \
+        || warn "python3 not found; the firmware-settle step will be skipped (the driver settles on first sensor access)."
     if [[ -z "$DEB_PATH" && -z "$TGZ_PATH" ]]; then
         command -v curl >/dev/null 2>&1 || command -v wget >/dev/null 2>&1 \
             || die "need curl or wget to fetch the driver (or pass --deb/--tarball PATH)."
@@ -275,18 +284,39 @@ get_upstream() {
 }
 
 # ── Choose a source and populate ${STAGE}/extract ───────────────────────────
+#
+# USED_SOURCE records which origin the payload actually came from, because the
+# two are not interchangeable: they carry the same driver version built twice,
+# and only the Canonical build has been verified on real hardware. A user who
+# ends up on the fallback is told so rather than left to assume otherwise.
+USED_SOURCE=""
 obtain_payload() {
     mkdir -p -- "${STAGE}/extract"
     case "$SOURCE" in
-        oem)      get_oem || die "could not download the OEM deb. See SOURCES for manual options." ;;
-        upstream) get_upstream || die "could not download the Broadcom upstream tarball. See SOURCES." ;;
+        oem)      get_oem && USED_SOURCE="oem" || die "could not download the OEM deb. See SOURCES for manual options." ;;
+        upstream) get_upstream && USED_SOURCE="upstream" || die "could not download the Broadcom upstream tarball. See SOURCES." ;;
         auto)
             if get_oem; then
-                :
+                USED_SOURCE="oem"
             else
                 warn "OEM source unreachable; falling back to the Broadcom upstream tarball (see SOURCES)."
                 get_upstream || die "neither the OEM deb nor the Broadcom upstream is reachable. See SOURCES."
+                USED_SOURCE="upstream"
             fi
+            ;;
+    esac
+}
+
+report_source() {
+    case "$USED_SOURCE" in
+        oem)
+            ok "Driver source: Canonical's OEM build (the one verified on real hardware)."
+            ;;
+        upstream)
+            warn "Driver source: Broadcom's upstream tarball, not Canonical's OEM build."
+            warn "Same driver version, built separately, and it is not the build this"
+            warn "project tested on hardware. Using it means accepting Broadcom's own"
+            warn "licence terms directly. See SOURCES and docs/LICENSING.md."
             ;;
     esac
 }
@@ -358,7 +388,10 @@ write_state() {
     mv -f -- "$tmp" "$STATE_FILE"
 }
 
-# ── Lay the trees the source provided into / (atomic per-tree via tar) ──────
+# ── Lay the trees the source provided into / ────────────────────────────────
+# tar-to-tar preserves modes and ownership in one pass. It is NOT atomic: a
+# failure part way leaves some trees laid and others not, which is why the
+# backup taken just above is the recovery path rather than any rollback here.
 install_trees() {
     log "Installing driver payload..."
     local present=() tree
@@ -391,12 +424,17 @@ main() {
     log "Restarting fprintd..."
     systemctl restart fprintd 2>/dev/null || warn "could not restart fprintd via systemctl; it is D-Bus activated and will start on demand."
 
-    if [[ -x "$FW_UPDATER" ]]; then
+    if [[ -x "$FW_UPDATER" ]] && command -v python3 >/dev/null 2>&1; then
         log "Settling sensor firmware (update-fw.py)..."
         python3 "$FW_UPDATER" || warn "firmware-settle step returned non-zero; the driver usually finishes this in the background."
     else
         log "No firmware-settle helper for this source; the driver settles firmware on first sensor access."
     fi
+
+    # Last, not mid-run: the udev, fprintd and firmware steps print enough to
+    # scroll a mid-run notice off the screen, and which build you just installed
+    # is something the reader should still be able to see when it stops.
+    report_source
 
     ok "Done. Enrol a finger with:  fprintd-enroll \"\$USER\""
     log "Then test with:  fprintd-verify"
