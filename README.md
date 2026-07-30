@@ -12,12 +12,29 @@ install on 24.04 and 26.04.
 ## Install
 
 ```sh
-git clone https://github.com/elementmerc/latitude-fingerprint
-cd latitude-fingerprint
-sudo ./install.sh
+sudo add-apt-repository ppa:elementmerc/latitude-fingerprint
+sudo apt update
+sudo apt install libfprint-2-tod1-broadcom-installer
+```
+
+Then enrol a finger and check it works:
+
+```sh
 fprintd-enroll "$USER"     # touch the sensor a few times
 fprintd-verify
 ```
+
+If you would rather not add a PPA, run the script straight from a clone:
+
+```sh
+git clone https://github.com/elementmerc/latitude-fingerprint
+cd latitude-fingerprint
+sudo ./install.sh
+```
+
+Both routes do the same thing. Prebuilt packages are also on the
+[Releases page](https://github.com/elementmerc/latitude-fingerprint/releases)
+for Debian and Mint users who cannot add an Ubuntu PPA.
 
 The first install updates the sensor's firmware, which makes it reset on the USB
 bus. If that first `fprintd-enroll` reports "No such device", reboot once and run
@@ -39,10 +56,12 @@ Gentoo packages use. Details in [docs/LICENSING.md](docs/LICENSING.md).
 ## Uninstall
 
 ```sh
-sudo ./uninstall.sh
+sudo apt remove libfprint-2-tod1-broadcom-installer     # if you used the PPA
+sudo ./uninstall.sh                                     # if you used the script
 ```
 
-Your enrolled fingerprints are kept.
+Either way the driver comes back out, anything it displaced is put back, and
+your enrolled fingerprints are kept.
 
 ## Background
 
