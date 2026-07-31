@@ -263,6 +263,17 @@ if [[ ${#FAILED_TREES[@]} -gt 0 ]]; then
     warn "The driver is gone, but these were left behind: ${FAILED_TREES[*]}"
     warn "They are harmless without the driver; remove them by hand if you want them gone."
 fi
+# What the user is told depends on whether anything actually came out. Telling
+# somebody whose reader still works to switch off fingerprint login is the worst
+# advice this tool can give, and it is exactly what the unconditional version
+# said to anyone who had already moved to the maintained package: nothing was
+# removed, the sensor worked, and the closing advice told them to disable it.
+if [[ $REMOVED -eq 0 ]]; then
+    ok "Nothing to remove. This machine is left exactly as it was found."
+    log "Your fingerprint reader is unaffected; if it worked a moment ago, it still does."
+    exit 0
+fi
+
 ok "Uninstall complete."
 if command -v pam-auth-update >/dev/null 2>&1; then
     log "If you turned on fingerprint login, turn it off now with:  sudo pam-auth-update"
