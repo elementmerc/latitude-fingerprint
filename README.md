@@ -1,5 +1,25 @@
 # latitude-fingerprint
 
+> **This project is finished. Use
+> [`ppa:medicalwei/dell-cv3-cv3plus`](https://launchpad.net/~medicalwei/+archive/ubuntu/dell-cv3-cv3plus)
+> instead.**
+>
+> It is maintained by the Canonical engineer who packages this driver, and since
+> 7 July 2026 it covers 24.04 and 26.04 with driver 5.15.377, which is newer than
+> the 5.15.285 this project installs. Tested on a Latitude 7420 running 26.04 on
+> 31 July 2026: it installed over a hand-laid copy of this project's files
+> without conflict, updated the sensor firmware, and the existing enrolment still
+> verified.
+>
+> ```sh
+> sudo add-apt-repository ppa:medicalwei/dell-cv3-cv3plus
+> sudo apt update
+> sudo apt install libfprint-2-tod1-broadcom
+> ```
+>
+> This repository stays up for reference and will be archived. Everything below
+> describes what it did while it was needed.
+
 Fingerprint login for Dell Latitude and Precision laptops on Ubuntu 24.04 and
 26.04 LTS.
 
@@ -82,12 +102,21 @@ sudo apt remove libfprint-2-tod1-broadcom-installer     # if you used the PPA
 sudo ./uninstall.sh                                     # if you used the script
 ```
 
-Either way the driver comes back out and anything it displaced is put back.
+Either way the driver this project installed comes back out and anything it
+displaced is put back.
 
-Two things stay behind. Your enrolled fingerprints are kept, under
+If a different driver is in place by then, because you have already installed
+the maintained package above, removal says so and leaves it alone rather than
+deleting somebody else's file. That is the normal thing to see if you switched
+over first, and it is not an error.
+
+Three things stay behind. Your enrolled fingerprints are kept, under
 `/var/lib/fprint/<your username>/`; delete them with
-`fprintd-delete "$USER"` if you want them gone. And the sensor firmware stays at
-the version the first install flashed, which cannot be reverted.
+`fprintd-delete "$USER"` if you want them gone. Copies of anything the install
+displaced are kept under `/var/backups/latitude-fingerprint/`, and
+`sudo apt purge` tells you where they are instead of deleting them for you. And
+the sensor firmware stays at the version the first install flashed, which cannot
+be reverted.
 
 If you turned on fingerprint login, turn it off again:
 
@@ -100,18 +129,26 @@ works.
 
 ## Background
 
-Canonical has an in-progress effort to package this driver, tracked in
+Yao Wei, a Canonical engineer, has been packaging this driver since February
+2025, tracked in
 [Launchpad bug #2099655](https://bugs.launchpad.net/ubuntu/+bug/2099655), with
-builds in a personal PPA (`ppa:medicalwei/dell-cv3-cv3plus`) covering 22.04,
-24.04, 25.04, and 25.10. That PPA is maintained but has not reached the Ubuntu
-archive for any release, and it has no ControlVault 3 build for 26.04. If you
-installed `libfprint-2-tod1-broadcom` from that PPA, remove it before installing
-this one; the two cannot be installed together and apt will say so. This
-project is an independent alternative: hardware-verified on a Latitude 7420
-running 26.04, container-tested on clean 24.04 and 26.04, and built so it never
-redistributes the proprietary driver. If those packages reach the Ubuntu
-archive, that becomes the natural home; until then, this covers current LTS
-users, 26.04 in particular.
+builds in `ppa:medicalwei/dell-cv3-cv3plus`.
+
+When this project started, that PPA had no ControlVault 3 build for 26.04, which
+is the gap it was written to fill. **That gap closed on 7 July 2026**, when
+builds of driver 5.15.377 were published for 22.04, 24.04 and 26.04. His build
+is newer than the 5.15.285 this project pins, so there is no longer a reason to
+use this one. That is why the project is finished.
+
+One part is still unfinished, and it is the part that would help everyone: the
+package is in a PPA, not in the Ubuntu archive. Checked on 31 July 2026, the
+primary archive has no `libfprint-2-tod1-broadcom` for noble, plucky, questing
+or resolute. Anyone able to help with archive inclusion would be doing the
+useful work here.
+
+The two packages cannot be installed together, and they use the same paths. If
+you still have this one, `sudo apt remove libfprint-2-tod1-broadcom-installer`
+first, then install his.
 
 ## Licence
 

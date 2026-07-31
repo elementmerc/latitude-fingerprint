@@ -13,6 +13,14 @@ case "$1" in
             echo "         sudo apt install --reinstall libfprint-2-tod1-broadcom-installer" >&2
             exit 1
         fi
+        echo ""
+        echo "NOTE: this package is no longer maintained. The driver is now packaged"
+        echo "      for 24.04 and 26.04, in a newer version, by the Canonical engineer"
+        echo "      who maintains it upstream:"
+        echo "        sudo add-apt-repository ppa:medicalwei/dell-cv3-cv3plus"
+        echo "        sudo apt install libfprint-2-tod1-broadcom"
+        echo "      That is the better option for a new install. Continuing anyway."
+        echo ""
         echo "Fetching and installing the Broadcom fingerprint driver..."
         echo "It comes from Canonical's archive, or from Broadcom's own download if"
         echo "Canonical's copy cannot be reached. Nothing is installed unless it matches"
@@ -30,6 +38,10 @@ case "$1" in
         fi
         ;;
     abort-upgrade|abort-remove|abort-deconfigure)
+        ;;
+    *)
+        echo "postinst called with unknown argument '$1'" >&2
+        exit 1
         ;;
 esac
 

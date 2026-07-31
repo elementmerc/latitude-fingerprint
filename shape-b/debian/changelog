@@ -1,13 +1,20 @@
 libfprint-2-tod1-broadcom-installer (0.3.0~24.04.1) noble; urgency=medium
 
-  * Removal now takes the driver back out even when the installer has been run
-    more than once. Previously a repeat install recorded the driver as though it
-    were a file of yours, and removing the package put it straight back while
-    reporting success.
+  * FINAL RELEASE. This package is no longer maintained. The driver is now
+    packaged for 24.04 and 26.04, in a newer version (5.15.377), by the Canonical
+    engineer who maintains it upstream: ppa:medicalwei/dell-cv3-cv3plus. Use that
+    instead. This release exists to fix removal and to say so.
+  * Removing the package now takes the driver back out reliably. Previously, if
+    the installer had been run more than once, removal reported success while
+    leaving the proprietary driver on the machine. Anyone affected gets the fix
+    by upgrading to this version before removing.
+  * Removal now leaves alone any driver this package did not install, so it
+    cannot delete a driver you installed from somewhere else.
+  * Removing the package no longer leaves the downloaded driver in the cache.
   * Broadcom's own download is used as a second source when Canonical's copy
     cannot be reached. Both are pinned to a checksum, and the installer says
     which one it used.
-  * Re-running the installer now repairs a partly-installed driver instead of
+  * Re-running the installer repairs a partly-installed driver instead of
     reporting that there is nothing to do, and it no longer downloads anything
     when the driver is already fully in place.
   * The proprietary licence is installed alongside the driver.

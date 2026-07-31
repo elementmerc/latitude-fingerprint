@@ -92,12 +92,24 @@ before it went out. And while the very first install worked and my sensor
 sprang to life, I nearly didn't test hard enough to know whether it would hold
 up on other Latitudes running other versions of Ubuntu. I came close to shipping
 something that worked only on my desk. Docker helped there: throwaway containers
-on clean 24.04 and 26.04 confirmed the packaging, the download, the checksum, the
-install and the removal all behave on a machine that isn't mine. What a container
-can't do is touch a sensor, so the enrolment half is still only proven on my own
-laptop.
+on clean 24.04 and 26.04 exercised the packaging, the download, the checksum, the
+install and the removal on a machine that isn't mine.
+
+That is also where it bit me. On my own laptop I had installed once and it was
+fine. In a container I installed twice, the way anyone would after a failed
+download, and then removal reported success while the proprietary driver was
+still sitting on the disk. The installer had taken a snapshot of its own driver,
+mistaken it for a file of mine, and dutifully put it back. It had been doing that
+since the first public release and I had never noticed, because you only see it
+if you install twice and then check the disk rather than the exit code. Fixing it
+properly is most of what the final release is. What a container can't do is touch
+a sensor, so the enrolment half is still only proven on my own laptop.
 
 ## Try it
+
+If you came here to fix your own laptop, skip to the last section and install
+the maintained package instead. This is what I shipped at the time, and it is
+here because the rest of the story doesn't make sense without it.
 
 If you have the same sensor (a Broadcom ControlVault 3, USB id `0a5c:5843`) on
 Ubuntu 24.04 or 26.04:
@@ -120,23 +132,54 @@ bus. If that first enrol says "No such device", reboot once and run it again; it
 won't re-flash, and enrolment then works normally.
 
 One good thing came of posting on the bug: Yao Wei replied. He confirmed 5.15.285
-is the newest build Broadcom has put out, explained he can't promise future ones
-for 26.04 and beyond, and pointed me at the packaging's `debian/watch` file. That
-pointer is why the project now knows about Broadcom's own download and uses it as
-a second source when Canonical's copy is unreachable. He also said he'd chase the
-uploaders about getting it into the archive properly, which is where it belongs.
+was the newest build Broadcom had put out, explained he couldn't promise future
+ones for 26.04 and beyond, and pointed me at the packaging's `debian/watch` file.
+That pointer is why my installer learned about Broadcom's own download and started
+using it as a second source when Canonical's copy was unreachable. He also said
+he'd chase the uploaders about getting it into the archive properly, which is
+where it belongs.
 
-The source, the packaging, and prebuilt downloads live on
-[GitHub](https://github.com/elementmerc/latitude-fingerprint). I've also left a
-note on the [Launchpad bug](https://bugs.launchpad.net/ubuntu/+bug/2099655),
-asking whether this can be shipped properly to the other two Latitude owners out
-there with the same problem. (It is really far more than two. I was just the
-third to complain.)
+## And then the thing I built stopped being needed
+
+Here is the part I did not expect to be writing.
+
+On 7 July 2026, Yao Wei published builds of a newer driver, 5.15.377, for 22.04,
+24.04 and 26.04. The gap I'd built my installer to fill, no ControlVault 3 build
+for the newest LTS, was closed by the person whose job it actually is, five weeks
+after I turned up on his bug thread asking about it.
+
+I checked it properly before believing it. His package installed straight over my
+hand-laid copy of the older driver, took ownership of the same files without a
+conflict, updated the sensor's firmware in place, and my existing fingerprint
+still verified afterwards. No reboot, no re-enrol. It is a better answer than mine
+in every way that matters: newer driver, maintained by someone with access to the
+vendor, and packaged by someone who does this for a living.
+
+So I've stopped. If you have this laptop and this problem, use his:
+
+```sh
+sudo add-apt-repository ppa:medicalwei/dell-cv3-cv3plus
+sudo apt update
+sudo apt install libfprint-2-tod1-broadcom
+```
+
+Mine is still on
+[GitHub](https://github.com/elementmerc/latitude-fingerprint) if you want to read
+it, and it will be archived shortly.
+
+One piece is genuinely unfinished, and it is not the packaging. As I write this,
+the driver still is not in the Ubuntu archive itself, for any release. It lives
+in a PPA you have to know about, which means the people who need it are still the
+people who found a bug thread. That is the part worth someone's effort.
 
 ## Lessons learned
 
-So a grand total of three people on a bug thread share the problem I've now got
-a package for, and honestly, it was worth it. I learned how drivers reach your machine,
-I got to make something small that helps the open-source community, and I came
-out the other side a bit better at thinking about whole systems rather than just
-the code in front of me. Catch you in the next one. Till then, cheers.
+I set out to fix my fingerprint reader and ended up deleting my own project,
+which is a stranger ending than I planned and a better one. I learned how drivers
+reach your machine. I learned that "nobody is working on this" usually means "you
+haven't found who is". And I learned that turning up politely on a bug thread with
+a specific question and real hardware is worth more than anything I actually
+built.
+
+The reader works. It just works because of someone else's package, and I'm
+completely fine with that. Catch you in the next one. Till then, cheers.
