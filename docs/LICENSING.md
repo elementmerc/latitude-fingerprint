@@ -9,7 +9,7 @@ driver itself is closed.
 | Part | What it is | Licence |
 |---|---|---|
 | This project | Install scripts, Debian packaging metadata, docs, write-ups | AGPL-3.0-or-later |
-| The Broadcom driver | The `.so` plugin, its firmware blobs, and the PSK file | Proprietary ("Broadcom-tod"); shipped by Canonical, owned by Broadcom |
+| The Broadcom driver | The `.so` plugin, its firmware blobs, and `key.pem` | Proprietary; shipped by Canonical, owned by Broadcom |
 
 We never bundle, mirror, or redistribute the proprietary driver. Our packaging
 fetches it on the user's own machine, at install time, and verifies it against a
@@ -53,10 +53,10 @@ blob is loaded at runtime by libfprint through its stable plugin interface, the
 same way a browser loads an extension. Our scripts orchestrate the fetch; they
 do not link against, modify, or contain the blob.
 
-This is the established pattern. The AUR `PKGBUILD`, the Fedora spec, and the
-Gentoo ebuild for the same driver all do exactly this: ship a freely licensed
-recipe that downloads the vendor binary on the user's machine. We follow that
-precedent deliberately.
+Other distributions package this driver the same way: the AUR `PKGBUILD`, a
+Fedora spec and a Gentoo ebuild each ship a freely licensed recipe that fetches
+the vendor binary on the user's own machine. Checked 2026-07-30. We followed that
+precedent deliberately, though we have not re-verified those three since.
 
 ## What this means for you
 
@@ -71,12 +71,13 @@ precedent deliberately.
   with a copy of the agreement alongside and for use with the Broadcom hardware
   the driver was written for. This project simply does not take those conditions
   on: we never redistribute it, and our tools never do it for you.
-- **Two conditions worth knowing before you install:** the grant covers use with
-  the Broadcom silicon the driver was built for, so it does not cover a machine
-  with a different fingerprint sensor, and the agreement carries United States
-  export restrictions naming specific countries. The full terms are installed on
-  your machine alongside the driver, at
-  `/usr/share/doc/libfprint-2-tod1-broadcom/copyright`.
+- **Worth knowing before you install:** the agreement forbids attempts to modify,
+  reverse engineer, decompile or disassemble the driver, and provides for
+  automatic termination if you breach it. It also carries export restrictions.
+  The condition about Broadcom's own silicon attaches to *distributing* the
+  driver, not to using it. The full terms are installed on your machine alongside
+  the driver, at `/usr/share/doc/libfprint-2-tod1-broadcom/copyright`; read those
+  rather than this summary if it matters to you.
 
 ## Provenance
 

@@ -17,11 +17,13 @@ Comment:
  agreement alongside it, at
  /usr/share/doc/libfprint-2-tod1-broadcom/copyright.
  .
- In summary, and without substituting for the agreement itself: use,
- reproduction or distribution of the driver constitutes acceptance; distribution
- is permitted only complete, unmodified, accompanied by the agreement, and for
- use with the Broadcom silicon the driver was written for; and the agreement
- carries export restrictions.
+ The following is this packager's reading of that agreement, not legal advice,
+ and the agreement itself governs: use, reproduction or distribution of the
+ driver constitutes acceptance; distribution is permitted only complete,
+ unmodified, accompanied by the agreement, and for use with the Broadcom silicon
+ the driver was written for; modifying, reverse engineering, decompiling or
+ disassembling it is forbidden, with automatic termination on breach; and the
+ agreement carries export restrictions.
 
 Files: *
 Copyright: 2026 Daniel Iwugo <daniel@themalwarefiles.com>
