@@ -1,0 +1,16 @@
+# Panel attestations. Append-only; never edit or delete an entry.
+#
+# One entry per panel review. Each records WHAT was reviewed and a digest of the
+# review, never the review itself: the synthesis stays under private/reviews/ and
+# off every remote (ADR 64). This file is what a server-side check can read, and
+# it exists because a pull-request merge happens on the forge, where pre-push
+# hooks do not run.
+#
+# Written by scripts/panel-attest.sh. Checked by scripts/check-panel-attestation.sh.
+
+[[attestation]]
+covers   = "68a955370243afed6cc836f1247d0a7d61a92621"
+date     = "2026-07-31"
+artefact = "2026-07-30-panel-v0.3.0-cluster.md"
+sha256   = "31772033ba3e8467ba53ba44a7d95b32c4cb50d173955f3ef55d91dc7158fb5c"
+

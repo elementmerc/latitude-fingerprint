@@ -10,6 +10,40 @@ permissions:
   contents: read
 
 jobs:
+  panel-gate:
+    name: Panel coverage
+    # Only on a pull request INTO main. Routine work on dev is untouched, which
+    # is the layered-gate shape ADR 63 picked; this job is the half that can run
+    # where pre-push cannot, because the forge performs the merge server-side
+    # and no push to main ever leaves a machine with hooks installed.
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          # The check walks history to count what no panel has read, so a
+          # shallow clone would make every count wrong in the passing
+          # direction. The script detects and refuses a shallow clone, but
+          # asking for the full history here is what makes it pass honestly.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify panel coverage reaches this pull request
+        # head.sha, never GITHUB_SHA: on a pull_request event GITHUB_SHA is the
+        # ephemeral merge commit, which exists in nobody's history and makes
+        # every rev-list against it meaningless.
+        #
+        # Passed through env rather than interpolated into the run block. A
+        # ${{ }} expansion is substituted into the script *before* the shell
+        # parses it, so anything user-controlled in the event payload becomes
+        # shell source; this particular field is a 40-character sha, but the
+        # rule is worth keeping unconditional, because the next person to copy
+        # this step will reach for a branch name or a PR title.
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: .github/scripts/check-panel-attestation.sh "$HEAD_SHA" main
+
   licence-check:
     name: Licence headers
     runs-on: ubuntu-latest
