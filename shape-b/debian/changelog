@@ -9,7 +9,9 @@ libfprint-2-tod1-broadcom-installer (0.3.0~24.04.1) noble; urgency=medium
     leaving the proprietary driver on the machine. Anyone affected gets the fix
     by upgrading to this version before removing.
   * Removal now leaves alone any driver this package did not install, so it
-    cannot delete a driver you installed from somewhere else.
+    cannot delete a driver you installed from somewhere else. It says plainly
+    that nothing was removed, and no longer advises you to switch off a
+    fingerprint login that is still working.
   * Removing the package no longer leaves the downloaded driver in the cache.
   * Broadcom's own download is used as a second source when Canonical's copy
     cannot be reached. Both are pinned to a checksum, and the installer says

@@ -24,7 +24,9 @@ The last release. This project is finished; use
   `apt remove` told you it had removed the driver while leaving it on your
   machine.** Upgrade to this version first and removal will work properly.
 - Removal now leaves alone any driver this package did not install, so it cannot
-  delete a driver that came from somewhere else.
+  delete a driver that came from somewhere else. When that happens it says
+  plainly that nothing was removed, and no longer advises you to switch off a
+  fingerprint login that is still working.
 - Removal now reports a failure only when the driver is genuinely still present,
   rather than stopping at the first file it cannot delete.
 - A missing or unreadable install record no longer reports a clean removal while
