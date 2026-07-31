@@ -1,0 +1,57 @@
+#!/bin/sh
+# SPDX-License-Identifier: AGPL-3.0-or-later
+set -e
+
+# What this is actually for: purge had no owner, so the install marker and the
+# download cache survived it for good.
+#
+# It is NOT for cleaning up after a failed install. A postinst that exits
+# non-zero leaves the package half-configured; dpkg runs no error unwind and
+# never calls postrm abort-install for that case. (abort-install only follows a
+# failed preinst or unpack, and this package has no preinst.) An earlier version
+# of this file claimed otherwise and cleared the marker in the abort branches,
+# which on abort-upgrade destroyed the only pointer to the user's original files
+# while leaving both the payload and the backup in place.
+
+STATE_DIR=/var/lib/latitude-fingerprint
+CACHE_DIR=/var/cache/latitude-fingerprint
+BACKUP_ROOT=/var/backups/latitude-fingerprint
+LIBEXEC=/usr/libexec/libfprint-2-tod1-broadcom-installer
+
+case "$1" in
+    purge)
+        # The marker and the cache are ours and carry nothing the user authored.
+        rm -f "$STATE_DIR/install-state" "$STATE_DIR"/install-state.*
+        rmdir "$STATE_DIR" 2>/dev/null || true
+        rm -rf "$CACHE_DIR"
+        # The backups may hold files that were on the machine BEFORE this package
+        # was ever installed, so they are not deleted silently. Purge is the
+        # user asking for our state to go, not for their own files to go.
+        if [ -d "$BACKUP_ROOT" ]; then
+            echo "note: backups of files this package displaced are kept at $BACKUP_ROOT."
+            echo "      Delete them yourself if you no longer want them."
+        fi
+        ;;
+    abort-install|abort-upgrade)
+        # Deliberately nothing. An aborted unpack leaves the payload exactly as
+        # it was, so the marker still describes the truth and is the only record
+        # of which backup holds the user's originals. Deleting it here loses that
+        # for good.
+        ;;
+    remove)
+        # The driver has gone, so a cached copy of it has no purpose. Backups
+        # stay until purge: they may hold files that predate this package.
+        rm -rf "$CACHE_DIR"
+        rm -rf "$LIBEXEC/.cache"
+        ;;
+    upgrade|failed-upgrade|disappear)
+        ;;
+    *)
+        echo "postrm called with unknown argument '$1'" >&2
+        exit 1
+        ;;
+esac
+
+#DEBHELPER#
+
+exit 0

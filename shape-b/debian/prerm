@@ -8,9 +8,39 @@ LIBEXEC=/usr/libexec/libfprint-2-tod1-broadcom-installer
 # the installer backed up. uninstall.sh leaves enrolled fingerprints untouched.
 case "$1" in
     remove)
-        if [ -x "$LIBEXEC/uninstall.sh" ]; then
-            "$LIBEXEC/uninstall.sh" || true
+        # Absence is corruption, not a condition: this package ships the script.
+        # A soft "if executable" guard here exited 0 and let dpkg report a clean
+        # removal with the proprietary driver still on disk.
+        if [ ! -x "$LIBEXEC/uninstall.sh" ]; then
+            echo "error: $LIBEXEC/uninstall.sh is missing or not executable." >&2
+            echo "       The fingerprint driver is still installed. Restore the script and" >&2
+            echo "       try again:" >&2
+            echo "         sudo apt install --reinstall libfprint-2-tod1-broadcom-installer" >&2
+            exit 1
         fi
+        # uninstall.sh now reaches the end of its work and fails only when the
+        # proprietary driver is genuinely still on disk, so a non-zero exit here
+        # means exactly that. It is worth refusing the removal for: reporting
+        # success while the blob remains is the one outcome a user must never get.
+        if ! "$LIBEXEC/uninstall.sh"; then
+            echo "error: the fingerprint driver is still installed, so this package" >&2
+            echo "       has not been removed. Run this to see why:" >&2
+            echo "         sudo $LIBEXEC/uninstall.sh" >&2
+            echo "" >&2
+            echo "       Common causes: a read-only filesystem, or an immutable flag" >&2
+            echo "       (check with: lsattr /var/lib/fprint/fw)." >&2
+            echo "" >&2
+            echo "       Once the driver is gone, 'sudo apt remove' will work. If you" >&2
+            echo "       need to drop the package regardless and clean up by hand:" >&2
+            echo "         sudo dpkg --remove --force-remove-reinstreq libfprint-2-tod1-broadcom-installer" >&2
+            exit 1
+        fi
+        ;;
+    upgrade|deconfigure|failed-upgrade)
+        ;;
+    *)
+        echo "prerm called with unknown argument '$1'" >&2
+        exit 1
         ;;
 esac
 

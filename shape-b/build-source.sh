@@ -11,10 +11,26 @@
 
 set -euo pipefail
 
-readonly SHAPE_B_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
-readonly REPO_ROOT="$(cd -- "${SHAPE_B_DIR}/.." >/dev/null 2>&1 && pwd)"
+SHAPE_B_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+readonly SHAPE_B_DIR
+REPO_ROOT="$(cd -- "${SHAPE_B_DIR}/.." >/dev/null 2>&1 && pwd)"
+readonly REPO_ROOT
 readonly PKG="libfprint-2-tod1-broadcom-installer"
-readonly BASE_VERSION="0.1.0"
+
+# The version comes from debian/changelog, which is where a Debian package's
+# version actually lives and the only file that keeps its history. It used to be
+# hardcoded here, which left both published builds on 0.1.0 while the git tags
+# moved on; deriving it from the user-facing CHANGELOG.md instead just moved the
+# problem, because that file has no place to record a packaging-only re-upload.
+#
+# The base version is the part before the ~suite suffix, so `0.3.0~24.04.1` in
+# the changelog yields `0.3.0` and the suffix is rebuilt per suite below.
+read_base_version() {
+    local full
+    full="$(cd -- "$SHAPE_B_DIR" && dpkg-parsechangelog --show-field Version 2>/dev/null)" || full=""
+    [[ -n "$full" ]] || die "cannot read a version from debian/changelog"
+    printf '%s' "${full%%\~*}"
+}
 
 # Files single-sourced from the repository root into the build tree.
 readonly PAYLOAD=(install.sh uninstall.sh SHA256SUMS SOURCES)
@@ -23,9 +39,11 @@ die() { printf 'build-source: error: %s\n' "$*" >&2; exit 1; }
 
 usage() {
     cat <<EOF
-Usage: $0 <suite>
+Usage: $0 <suite> [revision]
 
-  <suite>   noble (24.04 LTS) or resolute (26.04 LTS)
+  <suite>     noble (24.04 LTS) or resolute (26.04 LTS)
+  [revision]  packaging revision within this release, default 1. Bump it to
+              re-upload a packaging-only fix without inventing a new release.
 
 Produces an unsigned source package under ${SHAPE_B_DIR}/build/<suite>/.
 Next steps after this script:
@@ -34,9 +52,11 @@ Next steps after this script:
 EOF
 }
 
-[[ $# -eq 1 ]] || { usage; exit 1; }
+[[ $# -ge 1 && $# -le 2 ]] || { usage; exit 1; }
 case "$1" in -h|--help) usage; exit 0 ;; esac
 readonly SUITE="$1"
+readonly REVISION="${2:-1}"
+[[ "$REVISION" =~ ^[0-9]+$ ]] || die "revision must be a number, got '$REVISION'"
 
 # Map each supported suite to its Ubuntu release number for the version string.
 case "$SUITE" in
@@ -44,7 +64,9 @@ case "$SUITE" in
     resolute) readonly SERIES="26.04" ;;
     *) die "unsupported suite '$SUITE' (supported: noble, resolute)" ;;
 esac
-readonly VERSION="${BASE_VERSION}~${SERIES}.1"
+BASE_VERSION="$(read_base_version)" || exit 1
+readonly BASE_VERSION
+readonly VERSION="${BASE_VERSION}~${SERIES}.${REVISION}"
 
 # Pre-flight: the single-source files and the packaging must be present.
 for f in "${PAYLOAD[@]}"; do
@@ -52,6 +74,16 @@ for f in "${PAYLOAD[@]}"; do
 done
 [[ -d "${SHAPE_B_DIR}/debian" ]] || die "missing debian/ tree in ${SHAPE_B_DIR}"
 command -v dpkg-buildpackage >/dev/null 2>&1 || die "dpkg-buildpackage not found (apt install dpkg-dev)"
+
+# The release notes a user reads and the package a user installs should describe
+# the same release. This does not block a build, because the packaging often has
+# to be built and tested before the notes are written, but an upload without them
+# is how a version reaches people with nothing explaining what changed.
+if ! grep -q "^## v${BASE_VERSION}\b" "${REPO_ROOT}/CHANGELOG.md" 2>/dev/null; then
+    printf 'build-source: WARNING: CHANGELOG.md has no "## v%s" entry.\n' "$BASE_VERSION" >&2
+    printf 'build-source: WARNING: build it for testing if you like, but do not upload it\n' >&2
+    printf 'build-source: WARNING: until the release notes for %s exist.\n' "$BASE_VERSION" >&2
+fi
 
 readonly BUILD_DIR="${SHAPE_B_DIR}/build/${SUITE}"
 readonly SRC_DIR="${BUILD_DIR}/${PKG}-${BASE_VERSION}"

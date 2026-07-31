@@ -1,0 +1,78 @@
+name: Checks
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+
+permissions:
+  contents: read
+
+jobs:
+  licence-check:
+    name: Licence headers
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # Pinned by commit, not by tag: a tag can be moved to point at different
+      # code after review.
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          # The job does not push, and leaving the token in .git/config means a
+          # later step (or a linter fetched at run time) can read it.
+          persist-credentials: false
+
+      # Every shell script carries an SPDX-License-Identifier in its first ten
+      # lines. Markdown, YAML and packaging metadata live under the repo LICENSE.
+      - name: Verify SPDX headers
+        run: |
+          set -euo pipefail
+          missing=()
+          while IFS= read -r f; do
+            head -10 "$f" | grep -q 'SPDX-License-Identifier' || missing+=("$f")
+          done < <(git ls-files '*.sh')
+          if [[ ${#missing[@]} -gt 0 ]]; then
+            echo "::error::Missing SPDX-License-Identifier:"
+            printf '  %s\n' "${missing[@]}"
+            exit 1
+          fi
+          echo "All shell scripts carry an SPDX header."
+
+  shellcheck:
+    name: ShellCheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          # The job does not push, and leaving the token in .git/config means a
+          # later step (or a linter fetched at run time) can read it.
+          persist-credentials: false
+
+      # This project is almost entirely shell, and the shell IS the product: it
+      # runs as root on a stranger's laptop and lays a driver into /. Linting it
+      # is the highest-value automated check available here.
+      #
+      # Severity is `style`, the strictest setting, rather than the usual
+      # `warning`. Deliberate: a gate configured to ignore a whole class of
+      # finding is not much of a gate, and the handful of genuine exceptions
+      # carry an inline `shellcheck disable` with the reason next to the code.
+      # Pinned by digest, and the same image scripts/preflight.sh uses locally.
+      # Installing whatever apt has meant CI ran 0.9.0 while a developer ran a
+      # newer build, so a clean local run said nothing about the gate.
+      - name: Run shellcheck
+        run: |
+          set -euo pipefail
+          docker run --rm -v "$PWD":/mnt:ro -w /mnt \
+            koalaman/shellcheck-alpine@sha256:c82fe42504fbc9fc68f15d36638e5ee2324ebb8b94e96a3c4e395bf361c49183 shellcheck --version
+          # shellcheck's own exit status is the gate; xargs -r guards the
+          # nothing-to-lint case rather than passing an empty argument list.
+          # -z / -0: git C-escapes names with spaces or quotes, so a plain
+          # pipeline would mangle them and silently skip the file.
+          # The maintainer scripts run as root under dpkg and are #!/bin/sh, so
+          # a '*.sh' glob never saw the most privileged code in the package.
+          git ls-files -z '*.sh' 'shape-b/debian/postinst' 'shape-b/debian/prerm' \
+            'shape-b/debian/postrm' | xargs -0 -r docker run --rm -v "$PWD":/mnt:ro -w /mnt \
+            koalaman/shellcheck-alpine@sha256:c82fe42504fbc9fc68f15d36638e5ee2324ebb8b94e96a3c4e395bf361c49183 shellcheck --severity=style --format=gcc
+          echo "No shellcheck findings."

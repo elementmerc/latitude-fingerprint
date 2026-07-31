@@ -1,0 +1,25 @@
+# The driver this package installs is proprietary and is never redistributed
+# here, so there is no upstream tarball for uscan to fetch on our behalf. What
+# there IS is a place where a new driver version would appear first, and this
+# file records it so the check is a command rather than somebody's memory.
+#
+# Broadcom publishes the driver here; Canonical packages the same version into
+# the OEM pocket that install.sh prefers.
+#
+# Two deliberate departures from a normal watch file:
+#
+#   * dversionmangle rewrites this package's own version to the driver version
+#     pinned in SHA256SUMS. Without it uscan compared Broadcom's 5.15.285
+#     against our 0.3.0 and reported a new upstream release on every single run,
+#     which is the same as reporting nothing at all. What we want to know is
+#     whether Broadcom has published a driver newer than the one we pin.
+#
+#   * There is no uupdate. The default action would build a new source tree
+#     around the downloaded tarball, and that tarball is the proprietary driver:
+#     running it would put the blob inside a source package that this project
+#     could then upload. Nothing here may ever do that. This file reports; a
+#     human changes the pins by hand.
+version=5
+opts="mode=http,pgpmode=none,dversionmangle=s/.*/5.15.285.5.15.010.0/" \
+  https://packages.broadcom.com/artifactory/dell-controlvault-drivers/ \
+  brcm_linux_fp_([\d.]+)_([\d.]+)\.tgz debian

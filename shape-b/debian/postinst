@@ -6,21 +6,42 @@ LIBEXEC=/usr/libexec/libfprint-2-tod1-broadcom-installer
 
 case "$1" in
     configure)
-        if [ -x "$LIBEXEC/install.sh" ]; then
-            echo "Fetching and installing the Broadcom fingerprint driver from Canonical..."
-            if ! "$LIBEXEC/install.sh"; then
-                echo "" >&2
-                echo "The fingerprint driver could not be installed. The most likely cause" >&2
-                echo "is that the driver could not be downloaded from Canonical's archive." >&2
-                echo "Once the network is reachable, retry with:" >&2
-                echo "  sudo apt install --reinstall libfprint-2-tod1-broadcom-installer" >&2
-                echo "or run the installer directly:" >&2
-                echo "  sudo $LIBEXEC/install.sh" >&2
-                exit 1
-            fi
+        # Absence is corruption, not a condition: this package ships the script.
+        if [ ! -x "$LIBEXEC/install.sh" ]; then
+            echo "error: $LIBEXEC/install.sh is missing or not executable, so the" >&2
+            echo "       driver was not installed. Restore it with:" >&2
+            echo "         sudo apt install --reinstall libfprint-2-tod1-broadcom-installer" >&2
+            exit 1
+        fi
+        echo ""
+        echo "NOTE: this package is no longer maintained. The driver is now packaged"
+        echo "      for 24.04 and 26.04, in a newer version, by the Canonical engineer"
+        echo "      who maintains it upstream:"
+        echo "        sudo add-apt-repository ppa:medicalwei/dell-cv3-cv3plus"
+        echo "        sudo apt install libfprint-2-tod1-broadcom"
+        echo "      That is the better option for a new install. Continuing anyway."
+        echo ""
+        echo "Fetching and installing the Broadcom fingerprint driver..."
+        echo "It comes from Canonical's archive, or from Broadcom's own download if"
+        echo "Canonical's copy cannot be reached. Nothing is installed unless it matches"
+        echo "a checksum shipped with this package."
+        if ! "$LIBEXEC/install.sh"; then
+            echo "" >&2
+            echo "The fingerprint driver could not be installed. The most likely cause is" >&2
+            echo "that neither source could be reached: Canonical's archive, nor the" >&2
+            echo "Broadcom download it falls back to." >&2
+            echo "Once you are online again, retry with:" >&2
+            echo "  sudo apt install --reinstall libfprint-2-tod1-broadcom-installer" >&2
+            echo "or run the installer directly:" >&2
+            echo "  sudo $LIBEXEC/install.sh" >&2
+            exit 1
         fi
         ;;
     abort-upgrade|abort-remove|abort-deconfigure)
+        ;;
+    *)
+        echo "postinst called with unknown argument '$1'" >&2
+        exit 1
         ;;
 esac
 

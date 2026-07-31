@@ -1,3 +1,28 @@
+libfprint-2-tod1-broadcom-installer (0.3.0~24.04.1) noble; urgency=medium
+
+  * FINAL RELEASE. This package is no longer maintained. The driver is now
+    packaged for 24.04 and 26.04, in a newer version (5.15.377), by the Canonical
+    engineer who maintains it upstream: ppa:medicalwei/dell-cv3-cv3plus. Use that
+    instead. This release exists to fix removal and to say so.
+  * Removing the package now takes the driver back out reliably. Previously, if
+    the installer had been run more than once, removal reported success while
+    leaving the proprietary driver on the machine. Anyone affected gets the fix
+    by upgrading to this version before removing.
+  * Removal now leaves alone any driver this package did not install, so it
+    cannot delete a driver you installed from somewhere else. It says plainly
+    that nothing was removed, and no longer advises you to switch off a
+    fingerprint login that is still working.
+  * Removing the package no longer leaves the downloaded driver in the cache.
+  * Broadcom's own download is used as a second source when Canonical's copy
+    cannot be reached. Both are pinned to a checksum, and the installer says
+    which one it used.
+  * Re-running the installer repairs a partly-installed driver instead of
+    reporting that there is nothing to do, and it no longer downloads anything
+    when the driver is already fully in place.
+  * The proprietary licence is installed alongside the driver.
+
+ -- Daniel Iwugo <daniel@themalwarefiles.com>  Thu, 30 Jul 2026 14:00:00 +0100
+
 libfprint-2-tod1-broadcom-installer (0.1.0~24.04.1) noble; urgency=medium
 
   * Initial release. Fetches the Broadcom BCM58200 ControlVault 3 fingerprint

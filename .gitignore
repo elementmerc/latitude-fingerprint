@@ -2,6 +2,11 @@
 # (see docs/LICENSING.md).
 *.deb
 
+# Downloaded driver artefacts. install.sh --keep-download writes here when run
+# from a clone; the tarball is not covered by the *.tar.gz rule below.
+.cache/
+*.tgz
+
 # Source-package build artefacts
 shape-b/build/
 *.dsc

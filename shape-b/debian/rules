@@ -10,4 +10,4 @@ LIBEXEC := $(PKGDIR)/usr/libexec/libfprint-2-tod1-broadcom-installer
 # dh_fixperms makes everything under /usr/libexec executable. That is right for
 # the two scripts but wrong for the data files beside them, so reset those.
 execute_after_dh_fixperms:
-	chmod 0644 $(LIBEXEC)/SHA256SUMS $(LIBEXEC)/SOURCES
+	find $(LIBEXEC) -maxdepth 1 -type f ! -name '*.sh' -exec chmod 0644 {} +

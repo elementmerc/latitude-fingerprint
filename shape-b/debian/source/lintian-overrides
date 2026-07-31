@@ -1,0 +1,8 @@
+# Broadcom publishes the driver over https with no detached signature and no
+# signing key, so there is nothing for uscan to verify against. pgpmode=none
+# says that honestly rather than pretending to a check that cannot happen.
+#
+# What actually protects this package is not the transport: every artefact is
+# pinned by SHA256 in SHA256SUMS, and a file whose bytes do not match the pin is
+# refused outright rather than treated as a reason to try somewhere else.
+libfprint-2-tod1-broadcom-installer source: debian-watch-does-not-check-openpgp-signature [debian/watch]

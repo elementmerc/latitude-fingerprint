@@ -1,10 +1,18 @@
-# Source of the proprietary Broadcom TOD fingerprint driver
+# Sources of the proprietary Broadcom TOD fingerprint driver
 #
-# This project never redistributes the blob (see docs/LICENSING.md). install.sh
-# fetches it from Canonical's archive and verifies it against SHA256SUMS before
-# laying it into the system. This file records the pinned source so the install
-# is reproducible and auditable.
+# This project never redistributes the driver (see docs/LICENSING.md).
+# install.sh fetches it on your machine and verifies it against SHA256SUMS
+# before laying it into the system. Two sources are pinned, in order:
+#
+#   1. Canonical's OEM deb  (PRIMARY)   the curated, hardware-verified build
+#   2. Broadcom's upstream tarball (FALLBACK)  same version, a different build
+#
+# Both carry driver version 5.15.285-5.15.010.0. They are NOT byte-identical:
+# Canonical rebuilds and packages the binary, and that OEM build is the one
+# verified on real hardware, so it stays primary. The upstream tarball is used
+# only when the OEM source cannot be downloaded.
 
+# ── 1. Primary: Canonical OEM deb ───────────────────────────────────────────
 Package:   libfprint-2-tod1-broadcom
 Version:   5.15.285-5.15.010.0-0ubuntu2~22.04.1~oem1
 Filename:  libfprint-2-tod1-broadcom_5.15.285-5.15.010.0-0ubuntu2~22.04.1~oem1_amd64.deb
@@ -15,25 +23,41 @@ Modified:  2025-08-15 (newest in the pool as of 2026-05-30)
 # Canonical pool directory:
 #   http://dell.archive.canonical.com/updates/pool/public/libf/libfprint-2-tod1-broadcom/
 #
-# Primary URLs install.sh tries, in order (https first, http fallback). Note:
-# https to this host currently times out; plain http returns 200. Integrity is
-# guaranteed by the pinned SHA256 above, not by the transport.
+# URLs install.sh tries, in order (https first, http fallback). https to this
+# host currently times out; plain http returns 200. Integrity is the pinned
+# SHA256 above, not the transport.
 #
 #   https://dell.archive.canonical.com/updates/pool/public/libf/libfprint-2-tod1-broadcom/libfprint-2-tod1-broadcom_5.15.285-5.15.010.0-0ubuntu2~22.04.1~oem1_amd64.deb
 #   http://dell.archive.canonical.com/updates/pool/public/libf/libfprint-2-tod1-broadcom/libfprint-2-tod1-broadcom_5.15.285-5.15.010.0-0ubuntu2~22.04.1~oem1_amd64.deb
 
-# Fallback mirrors: if Canonical's pool path moves or the file is pulled,
-# the deb has also been distributed via the community channels below. Always
-# verify against the SHA256 above before installing, whatever the source.
-#   - (none vetted yet; populate when a stable mirror is confirmed)
-#
-# Manual install when the network is awkward:
-#   1. Download the file above on any machine.
-#   2. Confirm:  sha256sum -c SHA256SUMS   (run from this directory)
-#   3. Install:  sudo ./install.sh --deb /path/to/the.deb
+# ── 2. Fallback: Broadcom upstream tarball ──────────────────────────────────
+# Used only if the OEM deb cannot be downloaded. This is the authoritative
+# upstream that Canonical itself packages from (recorded in the packaging
+# repository's debian/watch). It is also where new driver versions appear
+# first, so it is the place to watch for future updates.
+Filename:  brcm_linux_fp_5.15.285_5.15.010.0.tgz
+Size:      11727635 bytes
+SHA256:    67dc8dd47a58e0f9005a42b9bb7048345831257bfd28f34ddd0db1ef07a0e9bc
 
-# Robustness upgrade (deferred): the authoritative SHA256 for this deb is also
-# carried in Canonical's GPG-signed Packages index for the OEM pocket. A future
-# install.sh could verify the signed index and read the hash from there, rather
-# than trusting the hash committed in SHA256SUMS. For now the committed hash is
-# the trust anchor, reviewed in git, matching the AUR/Fedora/Gentoo precedent.
+#   https://packages.broadcom.com/artifactory/dell-controlvault-drivers/brcm_linux_fp_5.15.285_5.15.010.0.tgz
+#
+# The tarball provides the same SET of files as the deb (driver .so, udev rule,
+# firmware), though the .so itself is a different build, as the hashes above
+# show. It carries no firmware-settle helper (update-fw.py). Broadcom's own installer
+# notes that firmware "will be automatically verified on device access", so the
+# driver settles its firmware on first use; the deb's proactive step is a
+# Canonical packaging addition, not a requirement.
+
+# ── Manual install when the network is awkward ──────────────────────────────
+#   OEM deb:   sudo ./install.sh --deb /path/to/the.deb
+#   Upstream:  sudo ./install.sh --tarball /path/to/brcm_linux_fp_*.tgz
+#   Verify first, naming the file you actually downloaded, since SHA256SUMS
+#   lists both and checking for the one you do not have reports a failure:
+#     sha256sum --ignore-missing -c SHA256SUMS
+
+# Robustness upgrade (deferred): the authoritative SHA256 for the OEM deb is
+# also carried in Canonical's GPG-signed Packages index for the OEM pocket. A
+# future install.sh could verify the signed index and read the hash from there,
+# rather than trusting the hash committed in SHA256SUMS. For now the committed
+# hashes are the trust anchor, reviewed in git, matching the AUR/Fedora/Gentoo
+# precedent.
