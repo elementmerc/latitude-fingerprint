@@ -18,19 +18,29 @@ case "$1" in
             echo "         sudo apt install --reinstall libfprint-2-tod1-broadcom-installer" >&2
             exit 1
         fi
-        # Deliberately not "|| true". A failure means the proprietary driver is
-        # still on the machine, and reporting a clean removal in that state is
-        # the one outcome a user must never get: they asked for the blob to go
-        # and would be told it had.
+        # uninstall.sh now reaches the end of its work and fails only when the
+        # proprietary driver is genuinely still on disk, so a non-zero exit here
+        # means exactly that. It is worth refusing the removal for: reporting
+        # success while the blob remains is the one outcome a user must never get.
         if ! "$LIBEXEC/uninstall.sh"; then
-            echo "error: could not remove the fingerprint driver files." >&2
-            echo "       The driver is still installed. Run this by hand to see why:" >&2
+            echo "error: the fingerprint driver is still installed, so this package" >&2
+            echo "       has not been removed. Run this to see why:" >&2
             echo "         sudo $LIBEXEC/uninstall.sh" >&2
-            echo "       then retry the removal." >&2
+            echo "" >&2
+            echo "       Common causes: a read-only filesystem, or an immutable flag" >&2
+            echo "       (check with: lsattr /var/lib/fprint/fw)." >&2
+            echo "" >&2
+            echo "       Once the driver is gone, 'sudo apt remove' will work. If you" >&2
+            echo "       need to drop the package regardless and clean up by hand:" >&2
+            echo "         sudo dpkg --remove --force-remove-reinstreq libfprint-2-tod1-broadcom-installer" >&2
             exit 1
         fi
         ;;
     upgrade|deconfigure|failed-upgrade)
+        ;;
+    *)
+        echo "prerm called with unknown argument '$1'" >&2
+        exit 1
         ;;
 esac
 

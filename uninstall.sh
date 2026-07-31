@@ -14,7 +14,9 @@ readonly TREES=(
     "var/lib/fprint/fw"
     "usr/share/doc/libfprint-2-tod1-broadcom"
 )
+readonly DRIVER_SO="/usr/lib/x86_64-linux-gnu/libfprint-2/tod-1/libfprint-2-tod-1-broadcom.so"
 readonly BACKUP_ROOT="/var/backups/latitude-fingerprint"
+readonly LOCK_FILE="/run/latitude-fingerprint.lock"
 readonly STATE_DIR="/var/lib/latitude-fingerprint"
 readonly STATE_FILE="${STATE_DIR}/install-state"
 
@@ -46,6 +48,15 @@ is_known_driver() {
 backup_is_ours() {
     is_known_driver "${1}/${TREES[0]}"
 }
+
+# Is the driver currently on disk one this tool installed?
+driver_is_ours() { is_known_driver "$DRIVER_SO"; }
+
+# Cleared when there was nothing of ours to take out, so the restore and the
+# marker handling below can tell "we removed our install" from "we found
+# somebody else's and left it".
+REMOVED=1
+FAILED_TREES=()
 
 if [[ -t 1 ]]; then
     readonly C_BOLD=$'\033[1m' C_RED=$'\033[31m' C_GREEN=$'\033[32m' C_YEL=$'\033[33m' C_OFF=$'\033[0m'
@@ -82,37 +93,86 @@ done
 
 [[ $EUID -eq 0 ]] || die "must run as root (use sudo)."
 
-log "Removing installed driver trees..."
-for tree in "${TREES[@]}"; do
-    target="/${tree}"
-    if [[ -e "$target" ]]; then
-        rm -rf -- "$target"
-        log "removed $target"
+# The same lock install.sh takes. Without it a concurrent install could lay the
+# payload back between the removal below and the marker being cleared, leaving
+# the driver on disk with no record of it and dpkg reporting a clean removal.
+{ exec 9>"$LOCK_FILE"; } 2>/dev/null || true
+if ! flock -n 9 2>/dev/null; then
+    log "An install or uninstall is already running; waiting up to 5 minutes..."
+    if ! flock -w 300 9 2>/dev/null; then
+        die "could not start: another run may still be in progress, or the lock file ${LOCK_FILE} could not be opened."
     fi
-done
+fi
 
-if [[ $RESTORE -eq 1 ]]; then
+# Only ever delete a driver this tool installed.
+#
+# Two defects lived in an unconditional delete. A second uninstall wiped the
+# file the first one had just restored, because the trees were removed before
+# anything asked whose they were and the backup had already been consumed. And
+# on a machine carrying somebody else's driver (the genuine Broadcom package, or
+# a hand-laid one) a removal took their files with it.
+#
+# The driver .so decides, as it does everywhere else: the other trees are only
+# on disk because some driver install put them there.
+if driver_is_ours; then
+    log "Removing installed driver trees..."
+    for tree in "${TREES[@]}"; do
+        target="/${tree}"
+        if [[ -e "$target" ]]; then
+            if rm -rf -- "$target"; then
+                log "removed $target"
+            else
+                warn "could not remove ${target}; continuing."
+                FAILED_TREES+=("$target")
+            fi
+        fi
+    done
+elif [[ -e "$DRIVER_SO" ]]; then
+    warn "The driver at ${DRIVER_SO} was not installed by this tool, so it has been left alone."
+    warn "If it came from a package, remove that package instead. Nothing was deleted."
+    REMOVED=0
+else
+    log "No driver installed by this tool was found; nothing to remove."
+    REMOVED=0
+fi
+
+if [[ $RESTORE -eq 1 && $REMOVED -eq 1 ]]; then
     if [[ -z "$BACKUP_DIR" ]]; then
         # Which backup holds the machine's ORIGINAL files, as opposed to a
         # snapshot of a driver this tool had already installed.
+        recorded=""
         if [[ -f "$STATE_FILE" ]]; then
-            # The marker names it outright. "none" means the first install found
-            # nothing to displace, so there is nothing to put back.
             recorded="$(grep -m1 '^backup_dir=' "$STATE_FILE" 2>/dev/null | cut -d= -f2- || true)"
-            if [[ "$recorded" == "none" ]]; then
-                log "Clean install recorded; nothing to restore."
-            elif [[ -n "$recorded" ]]; then
-                BACKUP_DIR="$recorded"
+        fi
+
+        if [[ "$recorded" == "none" ]]; then
+            log "Clean install recorded; nothing to restore."
+        elif [[ -n "$recorded" ]]; then
+            BACKUP_DIR="$recorded"
+        else
+            # Either there is no marker (installed by a version that never wrote
+            # one) or the marker is unreadable, truncated or hand-edited. Both
+            # used to end here in silence, which read exactly like a successful
+            # restore. Fall back to searching, and say that is what happened.
+            if [[ -f "$STATE_FILE" ]]; then
+                warn "the install record at ${STATE_FILE} does not name a backup; searching ${BACKUP_ROOT} instead."
             fi
-        elif [[ -d "$BACKUP_ROOT" ]]; then
-            # No marker: an install from before the marker existed. The OLDEST
-            # backup is the only one that can hold the user's own files, because
-            # every later one was taken with our driver already in place. Taking
-            # the most recent instead is what used to restore our own driver and
-            # leave it installed after a removal.
-            BACKUP_DIR="$(find "$BACKUP_ROOT" -mindepth 1 -maxdepth 1 -type d -not -name '*.restored' 2>/dev/null | sort | head -n1)"
-            if [[ -n "$BACKUP_DIR" ]]; then
-                warn "No install marker (installed by an older version); restoring the oldest backup, ${BACKUP_DIR}."
+            if [[ -d "$BACKUP_ROOT" ]]; then
+                # The NEWEST backup that is not a snapshot of our own driver.
+                # "Oldest" was a workaround from before ownership could be
+                # detected by content: it restored the first snapshot even when a
+                # later one held what was actually displaced last, and an
+                # interrupted early run could leave a partial directory that won.
+                while IFS= read -r cand; do
+                    [[ -n "$cand" ]] || continue
+                    [[ -f "${cand}/manifest.txt" ]] || continue
+                    backup_is_ours "$cand" && continue
+                    BACKUP_DIR="$cand"
+                    break
+                done < <(find "$BACKUP_ROOT" -mindepth 1 -maxdepth 1 -type d -not -name '*.restored' 2>/dev/null | sort -r)
+                if [[ -n "$BACKUP_DIR" ]]; then
+                    warn "No usable install record; restoring the most recent backup that holds your files, ${BACKUP_DIR}."
+                fi
             fi
         fi
     fi
@@ -168,13 +228,18 @@ fi
 # half way leaves the marker in place and a re-run still knows the backup this
 # machine belongs to.
 if [[ -f "$STATE_FILE" ]]; then
-    if [[ $RESTORE -eq 0 ]]; then
+    if [[ $REMOVED -eq 0 ]]; then
+        # Nothing of ours was taken out, so nothing about our record has become
+        # untrue. Clearing it here would discard the pointer to the user's
+        # original files while leaving the machine exactly as it was found.
+        log "Nothing was removed, so the install record at ${STATE_FILE} is left as it is."
+    elif [[ $RESTORE -eq 0 ]]; then
         # --no-restore leaves the backup in place, so clearing the marker would
         # discard the only record of which backup holds the user's originals.
         warn "keeping the install record at ${STATE_FILE} because --no-restore was used;"
         warn "run this again without --no-restore to put your original files back."
     else
-        rm -f -- "$STATE_FILE"
+        rm -f -- "$STATE_FILE" "$STATE_FILE".*
         rmdir -- "$STATE_DIR" 2>/dev/null || true
     fi
 fi
@@ -186,6 +251,18 @@ udevadm control --reload && udevadm trigger || warn "udev reload reported a prob
 log "Restarting fprintd..."
 systemctl restart fprintd 2>/dev/null || warn "could not restart fprintd; it is D-Bus activated and will start on demand."
 
+if [[ -e "$DRIVER_SO" ]] && driver_is_ours; then
+    warn "the driver is STILL INSTALLED at ${DRIVER_SO}."
+    if [[ ${#FAILED_TREES[@]} -gt 0 ]]; then
+        warn "these could not be removed: ${FAILED_TREES[*]}"
+    fi
+    warn "Check for a read-only filesystem, or an immutable flag (lsattr)."
+    die "removal did not complete; the proprietary driver is still on this machine."
+fi
+if [[ ${#FAILED_TREES[@]} -gt 0 ]]; then
+    warn "The driver is gone, but these were left behind: ${FAILED_TREES[*]}"
+    warn "They are harmless without the driver; remove them by hand if you want them gone."
+fi
 ok "Uninstall complete."
 if command -v pam-auth-update >/dev/null 2>&1; then
     log "If you turned on fingerprint login, turn it off now with:  sudo pam-auth-update"

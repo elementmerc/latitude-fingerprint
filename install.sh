@@ -58,7 +58,10 @@ readonly SENSOR_ID="0a5c:5843"
 readonly BACKUP_ROOT="/var/backups/latitude-fingerprint"
 
 readonly CACHE_DIR="/var/cache/latitude-fingerprint"
-readonly LOCK_FILE="/var/lock/latitude-fingerprint.lock"
+# NOT /var/lock: that is a 1777 tmpfs any local user can create files in or
+# hold a shared lock on, which is enough to block root's exclusive lock and stop
+# apt install indefinitely. /run is root-owned and cleared on boot.
+readonly LOCK_FILE="/run/latitude-fingerprint.lock"
 
 # Ownership marker. Written on the first install and cleared by uninstall.sh, it
 # is how a later run tells "these files are the user's, back them up" from "these
@@ -289,7 +292,12 @@ require_pin() {
 # the FHS reserves for read-only static data. From a git clone it landed in the
 # working tree instead, where .gitignore did not cover it.
 download_dir() {
-    if [[ $KEEP_DEB -eq 1 ]]; then printf '%s' "$CACHE_DIR"; else printf '%s' "$STAGE"; fi
+    if [[ $KEEP_DEB -eq 1 ]]; then
+        mkdir -p -- "$CACHE_DIR" && chmod 0700 -- "$CACHE_DIR"
+        printf '%s' "$CACHE_DIR"
+    else
+        printf '%s' "$STAGE"
+    fi
 }
 
 # ── Obtain from the OEM deb. Returns 1 only if it cannot be downloaded; a ────
@@ -360,7 +368,10 @@ get_upstream() {
     # tarball calls it LICENCE.broadcom; normalise it to where the deb puts it.
     if [[ -f "${root}/LICENCE.broadcom" ]]; then
         mkdir -p -- "${STAGE}/extract/usr/share/doc/libfprint-2-tod1-broadcom"
-        cp -a -- "${root}/LICENCE.broadcom" "${STAGE}/extract/usr/share/doc/libfprint-2-tod1-broadcom/copyright"
+        cp -- "${root}/LICENCE.broadcom" "${STAGE}/extract/usr/share/doc/libfprint-2-tod1-broadcom/copyright"
+        # The tarball ships it 0555. Without this the same advertised path is an
+        # executable file on one source and a normal one on the other.
+        chmod 0644 -- "${STAGE}/extract/usr/share/doc/libfprint-2-tod1-broadcom/copyright"
     fi
     if [[ -d "${root}/lib/udev/rules.d" ]]; then
         mkdir -p -- "${STAGE}/extract/usr/lib/udev/rules.d"
@@ -404,6 +415,8 @@ report_source() {
     case "$USED_SOURCE" in
         oem)
             ok "Driver source: Canonical's OEM build (the one verified on real hardware)."
+            log "Using it means accepting Broadcom's licence, installed at"
+            log "/usr/share/doc/libfprint-2-tod1-broadcom/copyright."
             ;;
         upstream)
             warn "Driver source: Broadcom's upstream tarball, not Canonical's OEM build."
@@ -435,6 +448,17 @@ payload_complete() {
         # only required when the source that provides it was used.
         [[ "$tree" == "usr/libexec/libfprint-2-tod1-broadcom" ]] && continue
         [[ -e "/${tree}" ]] || return 1
+        # Existence is not enough. Deleting the firmware files left the directory
+        # standing, so a re-run declared the install complete over a driver that
+        # could not work, and `apt install --reinstall`, the documented repair,
+        # did nothing. A directory has to hold something; a file has to be
+        # non-empty. This deliberately does not compare against the payload,
+        # because that would need a download and this check runs before one.
+        if [[ -d "/${tree}" ]]; then
+            [[ -n "$(ls -A "/${tree}" 2>/dev/null)" ]] || return 1
+        else
+            [[ -s "/${tree}" ]] || return 1
+        fi
     done
     return 0
 }
@@ -459,7 +483,13 @@ driver_is_ours() {
 # oem and --source upstream, a suite upgrade) never overwrites the record of
 # what was on the machine before we touched it.
 backup_existing() {
-    if [[ -f "$STATE_FILE" ]]; then
+    # The marker alone is not enough to skip a backup. After `uninstall.sh
+    # --no-restore` the marker is deliberately kept (it is the only pointer to
+    # the user's originals) while the payload is gone, so whatever sits at these
+    # paths on the next install is the user's and must be saved. Skipping on the
+    # marker alone meant that file was overwritten with no snapshot, and a later
+    # uninstall then restored the ORIGINAL over the top of it.
+    if [[ -f "$STATE_FILE" ]] && driver_is_ours; then
         log "Already installed by this tool; keeping the original backup record."
         return 0
     fi
@@ -508,7 +538,20 @@ backup_existing() {
         ok "Backed up existing files to ${backup_dir} (restore with uninstall.sh)."
     else
         log "No existing driver files to back up (clean install)."
+        # Finding nothing to save must never erase a record of something saved
+        # earlier. A marker can already name a backup holding the user's
+        # originals: our driver may have been replaced by another package and
+        # then removed, leaving these paths empty. Writing "none" over that
+        # pointer strands the backup on disk with nothing able to find it.
         backup_dir="none"
+        if [[ -f "$STATE_FILE" ]]; then
+            local prior
+            prior="$(grep -m1 '^backup_dir=' "$STATE_FILE" 2>/dev/null | cut -d= -f2-)"
+            if [[ -n "$prior" && "$prior" != "none" && -f "${prior}/manifest.txt" ]]; then
+                log "Keeping the earlier backup record at ${prior}."
+                backup_dir="$prior"
+            fi
+        fi
     fi
 
     write_state "$backup_dir"
@@ -534,6 +577,17 @@ write_state() {
     mv -f -- "$tmp" "$STATE_FILE"
 }
 
+# Update only the provenance fields, preserving the backup record, which is
+# written once and must never move.
+record_installed_build() {
+    local backup_dir="none" tmp
+    if [[ -f "$STATE_FILE" ]]; then
+        backup_dir="$(grep -m1 '^backup_dir=' "$STATE_FILE" 2>/dev/null | cut -d= -f2-)"
+        [[ -n "$backup_dir" ]] || backup_dir="none"
+    fi
+    write_state "$backup_dir"
+}
+
 # ── Lay the trees the source provided into / ────────────────────────────────
 # tar-to-tar preserves modes and ownership in one pass. It is NOT atomic: a
 # failure part way leaves some trees laid and others not, which is why the
@@ -551,13 +605,27 @@ install_trees() {
 }
 
 main() {
+    # Root FIRST, before the lock. The lock lives on a root-only path, so a
+    # non-root run failed to open it and died with "another install may still be
+    # running", which is both wrong and unactionable. The answer a user needs
+    # there is "use sudo".
+    [[ $EUID -eq 0 ]] || die "must run as root (use sudo)."
+
     # One run at a time. A manual run racing the postinst interleaved two tar
     # streams into / and two marker writes, and the loser could record a backup
     # taken after the winner had already laid our driver.
     mkdir -p -- "$(dirname -- "$LOCK_FILE")" 2>/dev/null || true
-    exec 9>"$LOCK_FILE" 2>/dev/null || true
-    if ! flock -w 300 9 2>/dev/null; then
-        die "another install or uninstall is already running (waited 5 minutes)."
+    # BRACES MATTER. `exec 9>file 2>/dev/null` applies BOTH redirections to the
+    # shell permanently, so it does not quieten this line, it deletes stderr for
+    # the rest of the run: every warn() and die() after it goes nowhere, and a
+    # failed install prints one line and exits in silence. Grouping keeps the
+    # 2>/dev/null scoped to the group while the fd 9 assignment still persists.
+    { exec 9>"$LOCK_FILE"; } 2>/dev/null || true
+    if ! flock -n 9 2>/dev/null; then
+        log "Another install or uninstall is running; waiting up to 5 minutes for it to finish..."
+        if ! flock -w 300 9 2>/dev/null; then
+            die "could not start: another install may still be running, or the lock file ${LOCK_FILE} could not be opened."
+        fi
     fi
 
     preflight
@@ -578,6 +646,11 @@ main() {
     backup_existing
     install_trees
     DIAGNOSTICS=1
+    # Re-stamp the provenance fields on EVERY successful install. backup_existing
+    # returns early once a marker exists, so without this the source and hash
+    # recorded on the first install were never corrected: switch to the other
+    # source and the marker still named the old build.
+    record_installed_build
 
     log "Reloading udev rules..."
     # shellcheck disable=SC2015  # warn on either failing is the intent, not if-then-else
@@ -605,11 +678,13 @@ main() {
 
     ok "Done. Enrol a finger with:  fprintd-enroll \"\$USER\""
     log "Then test with:  fprintd-verify"
-    if [[ "$USED_SOURCE" == "oem" ]]; then
-        warn "The first install on a machine updates the firmware inside the sensor. That"
-        warn "is a one-way change and uninstalling does not undo it. If enrol reports"
-        warn "'No such device', reboot once (the sensor re-enumerates after a flash) and retry."
-    fi
+    # Unconditional, and on stdout. This is the only thing here that cannot be
+    # undone, so it must not depend on which source was used or on stderr being
+    # attached to anything.
+    log "Note: the first install on a machine writes new firmware into the sensor itself."
+    log "That part cannot be undone, including by uninstalling. Everything else can."
+    log "If enrol reports 'No such device', reboot once (the sensor re-enumerates"
+    log "after a firmware write) and try again."
 }
 
 main "$@"
