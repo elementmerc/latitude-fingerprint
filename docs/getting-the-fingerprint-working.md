@@ -1,7 +1,5 @@
 # I Packaged a Fingerprint Driver for Ubuntu, Then Deleted My Own Project
 
-## How I got here
-
 So I've been juggling a few projects lately, and somewhere along the way I
 kind of just switched to Linux full time instead of bouncing in and out of
 WSL. I had a separate gaming system, so I just made the switch permanent.
@@ -9,13 +7,14 @@ Ubuntu was the obvious pick. The other candidate was Kali, and as much as I
 love it for pentesting, it is not what you want for ordinary day-to-day
 computing.
 
-One thing didn't survive the move was my fingerprint reader. This is the part
-where some people say "it's a small thing, just ignore it". Maybe I should
-have listened. But it bugged me that every single time I logged in I had to
-type in my password versus the previous move of just putting my finger on the
-reader. And so I decided to do the perfectly illogical thing a tech bro does:
+One thing that didn't survive the move was my fingerprint reader. This is the
+part where some people say "it's a small thing, just ignore it". Maybe I
+should have listened. But it bugged me that every single time I logged in I
+had to type in my password versus the previous move of just putting my finger
+on the reader. And so I decided to do the perfectly illogical thing a tech bro
+does:
 
-Create my own fingerprint reader.
+Create my own fingerprint driver.
 
 ## The Hail Mary
 
@@ -41,20 +40,6 @@ Some vendors help where they can. Others (NVIDIA, cough) can be a pain. Common
 parts like displays, keyboards and sound tend to work out fine because Linux
 drivers exist either way. The trouble starts with the specialised bits, like
 oddball function keys, custom hardware, or in my case a fingerprint reader.
-
-```
-  Hardware maker (Dell / Broadcom)
-        |  writes the driver, sets the licence terms
-        v
-  Agreement with the OS vendor
-        |
-        +--> Windows: shipped automatically (huge market, every incentive)
-        |
-        +--> Linux: depends on goodwill and licensing
-                     |
-        common parts (display, keyboard) --> just work
-        niche parts (fingerprint) ---------> often fall through the cracks
-```
 
 Linux distributions usually paper over this by having a team that prioritises
 what most people need, or by being open enough to let the community fill the
@@ -110,16 +95,16 @@ And while the very first install worked and my sensor sprang to life, I nearly
 didn't test hard enough to know whether it would hold up on other Latitudes
 running other versions of Ubuntu. I came close to shipping something that
 worked only on my desk. For that I used Docker to create throwaway containers
-on 2 Ubuntu versions, and exercised the packaging, the download, the
+for two Ubuntu versions, and exercised the packaging, the download, the
 checksum, the install and the removal.
 
 ## Try it
 
-If you came here to fix your own laptop, skip to the last section and install
+If you came here to fix your own laptop, skip to the next section and install
 the maintained package instead. This is what I shipped at the time, and it is
 here because the rest of the story doesn't make sense without it.
 
-If you have the same sensor (a Broadcom ControlVault 3, USB id `0a5c:5843`) on
+If you have the same sensor (a Broadcom ControlVault 3, USB ID 0a5c:5843) on
 Ubuntu 24.04 or 26.04:
 
 ```sh
@@ -139,13 +124,14 @@ The first install flashes the sensor's firmware, which makes it reset on the
 USB bus. If that first enrol says "No such device", reboot once and run it
 again. It won't re-flash, and enrolment then works normally.
 
-One good thing that came of posting on the bug was that Yao Wei replied. He
-confirmed 5.15.285 was the newest build Broadcom had put out, explained he
-couldn't promise future ones for Ubuntu 26.04 and beyond, and pointed me at the
-packaging's `debian/watch` file. That pointer is why my installer learned
-about Broadcom's own download and started using it as a second source when
-Canonical's copy was unreachable. He also said he'd chase the uploaders about
-getting it into the archive properly, which is where it belongs.
+One good thing that came of posting on the bug thread was that Yao Wei
+replied. He confirmed 5.15.285 was the newest build Broadcom had put out,
+explained he couldn't promise future ones for Ubuntu 26.04 and beyond, and
+pointed me at the packaging's debian/watch file. That pointer is why my
+installer learned about Broadcom's own download and started using it as a
+second source when Canonical's copy was unreachable. He also said he'd chase
+the uploaders about getting it into the archive properly, which is where it
+belongs.
 
 ## And then the thing I built stopped being needed
 
@@ -161,9 +147,9 @@ took ownership of the same files without a conflict, updated the sensor's
 firmware in place, and my existing fingerprint still verified afterwards. No
 reboot, no re-enrol.
 
-I hate to say it, but his was better than mine in every way that matters.
-A newer driver, by someone with access to the vendor, and packaged by
-someone who does this for a living.
+I hate to say it, but his was better than mine in every way that matters. A
+newer driver, by someone with access to the vendor, and packaged by someone
+who does this for a living.
 
 So I've stopped. If you have this laptop and this problem, use his:
 
@@ -173,11 +159,11 @@ sudo apt update
 sudo apt install libfprint-2-tod1-broadcom
 ```
 
-Mine is still on [GitHub](https://github.com/elementmerc/latitude-fingerprint)
-if you want to read it, and it will be archived shortly.
+Mine is still on GitHub if you want to read it, and it will be archived
+shortly.
 
-One piece is genuinely unfinished, and it's the packaging. As at the time of writing
-this, the driver still is not in the Ubuntu archive itself, for any release.
+One piece is genuinely unfinished, and it's the packaging. At the time of
+writing, the driver still isn't in the Ubuntu archive itself, for any release.
 It lives in a PPA you have to know about, which means the people who need it
 are still the people who found a bug thread. That is the part worth someone's
 effort.
@@ -191,4 +177,4 @@ I learned how drivers reach systems. I learned that "nobody is working on
 this" usually means "you haven't found who is". And I learned that just
 showing up to try something new can go surprisingly far.
 
-Catch you in the next one. Till then, cheers.
+Catch you in the next one. Till then, cheers ✍️
